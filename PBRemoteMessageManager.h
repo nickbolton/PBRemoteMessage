@@ -6,8 +6,6 @@
 //  Copyright (c) 2012 Pixelbleed. All rights reserved.
 //
 
-#import "MMSharedMessages.h"
-
 @class PBRemoteMessage;
 
 @protocol PBRemoteMessageDelegate <NSObject>
