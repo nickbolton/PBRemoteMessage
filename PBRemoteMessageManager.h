@@ -10,6 +10,12 @@
 
 @class PBRemoteMessage;
 
+@protocol PBRemoteMessageDelegate <NSObject>
+
+- (void)handleRawMessage:(NSData *)rawMessageData;
+
+@end
+
 extern NSString * const kPBRemoteMessageIDKey;
 extern NSString * const kPBRemotePayloadKey;
 extern NSString * const kPBRemoteMessageManagerActiveNotification;
@@ -20,6 +26,7 @@ extern NSString * const kPBPongNotification;
 @interface PBRemoteMessageManager : NSObject
 
 @property (nonatomic) NSInteger maxClients;
+@property (nonatomic, weak) id <PBRemoteMessageDelegate> delegate;
 
 + (PBRemoteMessageManager *)sharedInstance;
 

@@ -397,8 +397,11 @@ typedef enum {
 
             [self handleMessage:messageID payload:payload];
             
+        } else if (_globalDelegate != nil) {
+
+            [_globalDelegate handleRawMessage:data];
         } else {
-            NSLog(@"transaction was emtpy, data: %@", data);
+            NSLog(@"No global delegate to handle raw message.");
         }
     } else {
         NSLog(@"packet data not long enough: %d != %d", data.length, _packetLength);

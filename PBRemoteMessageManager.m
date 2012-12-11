@@ -307,18 +307,24 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     if ([noti isKindOfClass:[PBRemoteNotificationMessage class]]) {
 //        NSLog(@"sending %@...", noti.notificationName);
     }
-    
-    NSDictionary *fullMessage =
-    @{
-    kPBRemoteMessageIDKey : message.messageID,
-    kPBRemotePayloadKey : message.payload,
-    };
 
-    NSData *packet =
-    [NSPropertyListSerialization
-     dataFromPropertyList:fullMessage
-     format:NSPropertyListBinaryFormat_v1_0
-     errorDescription:NULL];
+    NSData *packet;
+
+    if (message.rawData != nil) {
+        packet = message.rawData;
+    } else {
+        NSDictionary *fullMessage =
+        @{
+        kPBRemoteMessageIDKey : message.messageID,
+        kPBRemotePayloadKey : message.payload,
+        };
+
+        packet =
+        [NSPropertyListSerialization
+         dataFromPropertyList:fullMessage
+         format:NSPropertyListBinaryFormat_v1_0
+         errorDescription:NULL];
+    }
 
     @synchronized (self) {
 
@@ -400,12 +406,6 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
         [_clients removeObjectForKey:netService.name];
 
-        if (_clients.count == 0) {
-            [[NSNotificationCenter defaultCenter]
-             postNotificationName:kPBRemoteMessageManagerInactiveNotification
-             object:self
-             userInfo:nil];
-        }
     }
 }
 
@@ -438,6 +438,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
         clientInfo.client = [[PBRemoteMessagingClient alloc] init];
         clientInfo.client.delegate = self;
+        clientInfo.client.globalDelegate = _delegate;
         
         clientInfo.client.serverAddresses = [[netService addresses] mutableCopy];
         [clientInfo.client start];
@@ -471,6 +472,13 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     }
 
     [self restartServiceBrowser];
+
+    if (_clients.count == 0) {
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:kPBRemoteMessageManagerInactiveNotification
+         object:self
+         userInfo:nil];
+    }
 }
 
 #pragma mark - Reachability
