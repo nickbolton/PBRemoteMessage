@@ -12,7 +12,6 @@
 #import <objc/runtime.h>
 #import "PBRemoteNotificationMessage.h"
 #import "GCDAsyncSocket.h"
-#import "DDLog.h"
 #import "NSString+GUID.h"
 #import "PBRemoteNotificationMessage.h"
 
@@ -207,6 +206,7 @@ typedef enum {
         _connected = YES;
         [self sendPing];
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
+        
     }
 }
 

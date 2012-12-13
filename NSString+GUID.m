@@ -61,12 +61,20 @@
     return [NSString stringWithUTF8String:macAddress];
 }
 
-+ (NSString *)deviceIdentifier {
-    return [[NSString macAddress] md5Digest];
++ (NSString *)timestampedGuid {
+
+    NSString *macAddressWithTimestamp =
+    [NSString stringWithFormat:@"%@-%f",
+     [NSString macAddress],
+     [NSDate timeIntervalSinceReferenceDate]];
+
+    NSString *guid = [macAddressWithTimestamp md5Digest];
+
+    return guid;
 }
 
-+ (NSString *)shortDeviceIdentifier {
-    return [[[NSString macAddress] md5Digest] substringFromIndex:23];
++ (NSString *)deviceIdentifier {
+    return [[NSString macAddress] md5Digest];
 }
 
 @end

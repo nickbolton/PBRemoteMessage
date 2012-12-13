@@ -82,10 +82,13 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
 }
 
 - (void)consumeMessage {
-    [[NSNotificationCenter defaultCenter]
-     postNotificationName:_notificationName
-     object:self
-     userInfo:_userInfo];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:_notificationName
+         object:self
+         userInfo:_userInfo];
+    });
 }
 
 @end

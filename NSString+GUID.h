@@ -12,6 +12,6 @@
 
 - (NSString *)md5Digest;
 + (NSString *)deviceIdentifier;
-+ (NSString *)shortDeviceIdentifier;
++ (NSString *)timestampedGuid;
 
 @end

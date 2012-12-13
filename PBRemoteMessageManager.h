@@ -7,10 +7,16 @@
 //
 
 @class PBRemoteMessage;
+@class Reachability;
 
 @protocol PBRemoteMessageDelegate <NSObject>
 
+@required
 - (void)handleRawMessage:(NSData *)rawMessageData;
+
+@optional
+- (void)clientConnected:(NSString *)clientDeviceIdentifier;
+- (void)clientDisconnected:(NSString *)clientDeviceIdentifier;
 
 @end
 
@@ -25,6 +31,9 @@ extern NSString * const kPBPongNotification;
 
 @property (nonatomic) NSInteger maxClients;
 @property (nonatomic, weak) id <PBRemoteMessageDelegate> delegate;
+@property (nonatomic) BOOL onlyConnectToRegisteredDevices;
+@property (nonatomic, strong) NSString *deviceIdentifier;
+@property (nonatomic, readonly) Reachability *reachability;
 
 + (PBRemoteMessageManager *)sharedInstance;
 
@@ -32,7 +41,10 @@ extern NSString * const kPBPongNotification;
 - (void)stop;
 - (void)sendBroadcastMessage:(PBRemoteMessage *)message;
 - (NSString *)serviceType;
-
+- (void)registeredDevice:(NSString *)deviceIdentifier;
+- (void)unregisterDevice:(NSString *)deviceIdentifier;
+- (BOOL)isConnectedToClient:(NSString *)clientIdentifier;
+- (BOOL)hasConnections;
 - (NSTimeInterval)averageClientRoundTripTime;
 
 @end

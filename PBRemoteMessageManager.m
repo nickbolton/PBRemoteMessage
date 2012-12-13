@@ -13,7 +13,6 @@
 #import "Reachability.h"
 #import "GCDAsyncSocket.h"
 #import "PBRemoteClientInfo.h"
-#import "DDLog.h"
 #import "NSString+GUID.h"
 
 #define READ_TIMEOUT 15.0
@@ -37,12 +36,14 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 @property (nonatomic, strong) GCDAsyncSocket *listenSocket;
 @property (nonatomic, strong) NSMutableArray *connectedSockets;
 
-@property (nonatomic, strong) Reachability *reachability;
+@property (nonatomic, readwrite) Reachability *reachability;
 @property (nonatomic, strong) NSString *serviceType;
 @property (nonatomic, strong) NSString *serviceName;
 
 @property (nonatomic, strong) NSNetServiceBrowser *netServiceBrowser;
 @property (nonatomic, strong) NSMutableDictionary *clients;
+
+@property (nonatomic, strong) NSMutableSet *registeredDevices;
 
 @end
 
@@ -54,6 +55,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     if (self != nil) {
 
         self.clients = [NSMutableDictionary dictionary];
+        self.registeredDevices = [NSMutableSet set];
 
         _maxClients = -1.0f;
 
@@ -63,6 +65,9 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
         [[GCDAsyncSocket alloc] initWithDelegate:self delegateQueue:_socketQueue];
 
         self.connectedSockets = [NSMutableArray array];
+
+        self.reachability = [Reachability reachabilityForInternetConnection];
+        [self.reachability startNotifier];
 
 #if TARGET_OS_IPHONE
         [[NSNotificationCenter defaultCenter]
@@ -84,6 +89,19 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 }
 
 - (void)dealloc {
+}
+
+- (BOOL)hasConnections {
+    return _clients.count > 0;
+}
+
+- (void)registeredDevice:(NSString *)deviceIdentifier {
+    [_registeredDevices addObject:deviceIdentifier];
+    [self restartServiceBrowser];
+}
+
+- (void)unregisterDevice:(NSString *)deviceIdentifier {
+    [_registeredDevices removeObject:deviceIdentifier];
 }
 
 - (NSString *)serviceType {
@@ -115,6 +133,10 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
     if (_netService == nil) {
 
+        if (_deviceIdentifier == nil) {
+            self.deviceIdentifier = [NSString deviceIdentifier];
+        }
+
         NSError *err = nil;
         if ([_listenSocket acceptOnPort:0 error:&err]) {
 
@@ -134,7 +156,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
             [[NSNetService alloc]
              initWithDomain:@"local."
              type:self.serviceType
-             name:[NSString deviceIdentifier]
+             name:self.deviceIdentifier
              port:port];
 
             NSLog(@"creating net service: %@", _netService);
@@ -163,9 +185,6 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
              selector:@selector(handlePing:)
              name:kPBPingNotification
              object:nil];
-
-            self.reachability = [Reachability reachabilityForInternetConnection];
-            [self.reachability startNotifier];
             
         } else {
             NSLog(@"Error in acceptOnPort:error: -> %@", err);
@@ -179,9 +198,15 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     clientInfo.netService = nil;
 }
 
+- (BOOL)isConnectedToClient:(NSString *)clientIdentifier {
+    return [_clients objectForKey:clientIdentifier] != nil;
+}
+
 - (void)stop {
 
     if (_netService != nil) {
+
+        self.deviceIdentifier = nil;
 
         [[NSNotificationCenter defaultCenter]
          removeObserver:self
@@ -221,6 +246,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
         [_netServiceBrowser stop];
 
         self.netServiceBrowser = nil;
+
     }
 }
 
@@ -369,7 +395,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
            didFindService:(NSNetService *)netService
                moreComing:(BOOL)moreServicesComing {
 
-    if ([netService.name isEqualToString:[NSString deviceIdentifier]] == NO) {
+    if ([netService.name isEqualToString:self.deviceIdentifier] == NO) {
 
         NSLog(@"DidFindService: %@", [netService name]);
 
@@ -395,7 +421,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
          didRemoveService:(NSNetService *)netService
                moreComing:(BOOL)moreServicesComing {
 
-    if ([netService.name isEqualToString:[NSString deviceIdentifier]] == NO) {
+    if ([netService.name isEqualToString:self.deviceIdentifier] == NO) {
 
         NSLog(@"DidRemoveService: %@", [netService name]);
 
@@ -419,7 +445,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
 - (void)netServiceDidResolveAddress:(NSNetService *)netService {
 
-    if ([netService.name isEqualToString:[NSString deviceIdentifier]] == NO) {
+    if ([netService.name isEqualToString:self.deviceIdentifier] == NO) {
 
         NSLog(@"DidResolve: %@ - %@", netService, [netService addresses]);
 
@@ -447,6 +473,19 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
 #pragma mark - PBRemoteMessagingClientDelegate Conformance
 
+- (void)clientConnected:(PBRemoteMessagingClient *)client {
+
+    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+
+        PBRemoteClientInfo *clientInfo =
+        [self clientInfoForClient:client];
+
+        if (clientInfo.netService.name.length > 0) {
+            [_delegate clientConnected:clientInfo.netService.name];
+        }
+    }
+}
+
 - (void)clientDisconnected:(PBRemoteMessagingClient *)client {
 
     PBRemoteClientInfo *clientInfo =
@@ -469,6 +508,13 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
         }
         
         [self cleanupClient:clientInfo];
+
+        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+
+            if (clientInfo.netService.name.length > 0) {
+                [_delegate clientDisconnected:clientInfo.netService.name];
+            }
+        }
     }
 
     [self restartServiceBrowser];
@@ -488,7 +534,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     NetworkStatus startStatus;
 
 #if TARGET_OS_IPHONE
-    startStatus = kReachableViaWWAN;
+    startStatus = ReachableViaWWAN;
 #else
     startStatus = ReachableViaWWAN;
 #endif
@@ -504,7 +550,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
     NetworkStatus wifiStatus;
 
 #if TARGET_OS_IPHONE
-    wifiStatus = kReachableViaWiFi;
+    wifiStatus = ReachableViaWiFi;
 #else
     wifiStatus = ReachableViaWiFi;
 #endif

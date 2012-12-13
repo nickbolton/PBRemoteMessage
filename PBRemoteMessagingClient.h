@@ -16,6 +16,7 @@
 @protocol PBRemoteMessagingClientDelegate <NSObject>
 
 - (void)clientDisconnected:(PBRemoteMessagingClient *)client;
+- (void)clientConnected:(PBRemoteMessagingClient *)client;
 
 @end
 
