@@ -15,7 +15,9 @@
 @property (nonatomic, readonly) NSDictionary *payload;
 @property (nonatomic, readonly) NSData *rawData;
 
-+ (NSString *)messagePreamble;
++ (NSData *)messagePreamble;
++ (NSData *)rawMessagePreamble;
+
 + (void)sendRawMessage:(NSData *)data;
 
 - (id)initWithMessageID:(NSString *)messageID

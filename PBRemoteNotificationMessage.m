@@ -35,7 +35,7 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
      userInfo:userInfo];
 
     [[PBRemoteMessageManager sharedInstance]
-     sendBroadcastMessage:message];
+     sendMessage:message];
 }
 
 - (id)initWithNotificationName:(NSString *)notificationName

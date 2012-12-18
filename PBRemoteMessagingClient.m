@@ -38,12 +38,13 @@ typedef enum {
     NSInteger _timeoutCount;
 
     MMMessageReadState _messageState;
+    BOOL _raw;
     uint32_t _packetLength;
 }
 
 @property (nonatomic, strong) GCDAsyncSocket *asyncSocket;
 @property (nonatomic, strong) NSMutableSet *messageClasses;
-@property (nonatomic, strong) NSMutableString *preambleBuffer;
+@property (nonatomic, strong) NSMutableData *preambleBuffer;
 @property (nonatomic, readwrite) NSTimeInterval averageRoundTripTime;
 
 @end
@@ -55,7 +56,7 @@ typedef enum {
     if (self) {
 
         self.messageClasses = [NSMutableSet set];
-        self.preambleBuffer = [NSMutableString string];
+        self.preambleBuffer = [NSMutableData dataWithCapacity:20];
         
         int numClasses;
         Class * classes = NULL;
@@ -140,7 +141,6 @@ typedef enum {
             if (_pingStartedTime == now) {
 
                 // timeout
-                NSLog(@"timeout!");
 
                 _timeoutCount++;
 
@@ -206,20 +206,16 @@ typedef enum {
         _connected = YES;
         [self sendPing];
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
-        
     }
 }
 
 - (void)socketDidDisconnect:(GCDAsyncSocket *)sock withError:(NSError *)err {
 	NSLog(@"SocketDidDisconnect:WithError: %@", err);
 
-	if (_connected) {
-        _connected = NO;
-		[self connectToNextAddress];
-	} else {
-        [self stop];
-        [_delegate clientDisconnected:self];
-    }
+    [self stop];
+    [_delegate clientDisconnected:self];
+
+    _connected = NO;
 }
 
 - (void)readDataForMessageState:(MMMessageReadState)messageState {
@@ -231,10 +227,10 @@ typedef enum {
 
 //            NSLog(@"preamble start, reading 1 byte");
 
-            _preambleBuffer.string = @"";
+            [_preambleBuffer setLength:0];
 
             [_asyncSocket
-             readDataToLength:1.0f
+             readDataToLength:1
              withTimeout:-1.0f
              tag:0];
 
@@ -245,7 +241,7 @@ typedef enum {
 //            NSLog(@"preamble update, reading 1 byte");
 
             [_asyncSocket
-             readDataToLength:1.0f
+             readDataToLength:1
              withTimeout:-1.0f
              tag:0];
 
@@ -274,7 +270,6 @@ typedef enum {
             break;
 
         default:
-            NSLog(@"ZZZZ");
             break;
     }
 }
@@ -282,6 +277,7 @@ typedef enum {
 - (void)readDataForNextMessageState {
 
     MMMessageReadState messageState = _messageState;
+    //MMMessageReadState previousState = messageState;
     
     switch (_messageState) {
 
@@ -291,11 +287,22 @@ typedef enum {
 
         case MMMessageReadStatePreambleUpdate:
         {
-            if (_preambleBuffer.length <= PBRemoteMessage.messagePreamble.length &&
-                [_preambleBuffer isEqualToString:[PBRemoteMessage.messagePreamble substringToIndex:_preambleBuffer.length]]) {
+            if (_preambleBuffer.length <= PBRemoteMessage.messagePreamble.length) {
 
-                if (_preambleBuffer.length == PBRemoteMessage.messagePreamble.length) {
-                    messageState = MMMessageReadStateLength;
+                const void *bufByte = [_preambleBuffer bytes] + _preambleBuffer.length - 1;
+                const void *rawPreambleByte = PBRemoteMessage.rawMessagePreamble.bytes + _preambleBuffer.length - 1;
+                const void *nonRawPreambleByte = PBRemoteMessage.messagePreamble.bytes + _preambleBuffer.length - 1;
+
+                _raw = *(char *)bufByte == *(char *)rawPreambleByte;
+
+                BOOL nonRaw =
+                *(char *)bufByte == *(char *)nonRawPreambleByte;
+
+                if (_raw || nonRaw) {
+
+                    if (_preambleBuffer.length == PBRemoteMessage.messagePreamble.length) {
+                        messageState = MMMessageReadStateLength;
+                    }
                 }
             } else {
 
@@ -351,13 +358,7 @@ typedef enum {
 }
 
 - (void)readPreamble:(NSData *)data {
-
-    NSString *preamblePart = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-
-    if (preamblePart.length > 0) {
-        [_preambleBuffer appendString:preamblePart];
-    }
-
+    [_preambleBuffer appendData:data];
     [self readDataForNextMessageState];
 }
 
@@ -378,31 +379,40 @@ typedef enum {
 
     if (data.length == _packetLength) {
 
-        NSDictionary *packet =
-        [NSPropertyListSerialization
-         propertyListFromData:data
-         mutabilityOption:NSPropertyListImmutable
-         format:NULL
-         errorDescription:NULL];
+        if (_raw) {
 
-//        NSLog(@"read packet: %@", packet);
+            if (_globalDelegate != nil) {
+                [_globalDelegate handleRawMessage:data];
+            } else {
+                NSLog(@"No global delegate to handle raw message.");
+            }
 
-        if (packet != nil) {
-
-            NSString *messageID =
-            [packet objectForKey:kPBRemoteMessageIDKey];
-
-            NSDictionary *payload =
-            [packet objectForKey:kPBRemotePayloadKey];
-
-            [self handleMessage:messageID payload:payload];
-            
-        } else if (_globalDelegate != nil) {
-
-            [_globalDelegate handleRawMessage:data];
         } else {
-            NSLog(@"No global delegate to handle raw message.");
+
+            NSDictionary *packet =
+            [NSPropertyListSerialization
+             propertyListFromData:data
+             mutabilityOption:NSPropertyListImmutable
+             format:NULL
+             errorDescription:NULL];
+
+//            NSLog(@"read packet: %@", packet);
+
+            if (packet != nil) {
+
+                NSString *messageID =
+                [packet objectForKey:kPBRemoteMessageIDKey];
+
+                NSDictionary *payload =
+                [packet objectForKey:kPBRemotePayloadKey];
+
+                [self handleMessage:messageID payload:payload];
+
+            } else {
+                NSLog(@"empty packet: %@", data);
+            }
         }
+
     } else {
         NSLog(@"packet data not long enough: %d != %d", data.length, _packetLength);
     }

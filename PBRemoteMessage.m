@@ -38,7 +38,7 @@
     PBRemoteMessage *message = [[PBRemoteMessage alloc] initWithRawData:data];
 
     [[PBRemoteMessageManager sharedInstance]
-     sendBroadcastMessage:message];
+     sendRawMessage:message];
 }
 
 - (id)initWithRawData:(NSData *)data {
@@ -63,8 +63,19 @@
 - (void)consumeMessage {
 }
 
-+ (NSString *)messagePreamble {
-    static NSString *preamble = @"som";
++ (NSData *)messagePreamble {
+    static NSData *preamble = nil;
+    if (preamble == nil) {
+        preamble = [@"som" dataUsingEncoding:NSUTF8StringEncoding];
+    }
+    return preamble;
+}
+
++ (NSData *)rawMessagePreamble {
+    static NSData *preamble = nil;
+    if (preamble == nil) {
+        preamble = [@"sor" dataUsingEncoding:NSUTF8StringEncoding];
+    }
     return preamble;
 }
 

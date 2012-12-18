@@ -30,6 +30,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 <NSNetServiceBrowserDelegate, NSNetServiceDelegate, PBRemoteMessagingClientDelegate>  {
 
     dispatch_queue_t _socketQueue;
+    BOOL _starting;
 }
 
 @property (nonatomic, strong) NSNetService *netService;
@@ -37,7 +38,6 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 @property (nonatomic, strong) NSMutableArray *connectedSockets;
 
 @property (nonatomic, readwrite) Reachability *reachability;
-@property (nonatomic, strong) NSString *serviceType;
 @property (nonatomic, strong) NSString *serviceName;
 
 @property (nonatomic, strong) NSNetServiceBrowser *netServiceBrowser;
@@ -105,11 +105,7 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 }
 
 - (NSString *)serviceType {
-    if (_serviceType == nil) {
-        self.serviceType =
-        [NSString stringWithFormat:@"_%@._tcp.", _serviceName];
-    }
-    return _serviceType;
+    return [NSString stringWithFormat:@"_%@._tcp.", _serviceName];
 }
 
 - (void)startWithServiceName:(NSString *)serviceName {
@@ -131,7 +127,9 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
 - (void)doStart {
 
-    if (_netService == nil) {
+    if (_netService == nil && _starting == NO) {
+
+        _starting = YES;
 
         if (_deviceIdentifier == nil) {
             self.deviceIdentifier = [NSString deviceIdentifier];
@@ -164,16 +162,6 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
             [_netService setDelegate:self];
             [_netService publish];
 
-            //		// You can optionally add TXT record stuff
-            //
-            //		NSMutableDictionary *txtDict = [NSMutableDictionary dictionaryWithCapacity:2];
-            //
-            //		[txtDict setObject:@"moo" forKey:@"cow"];
-            //		[txtDict setObject:@"quack" forKey:@"duck"];
-            //
-            //		NSData *txtData = [NSNetService dataFromTXTRecordDictionary:txtDict];
-            //		[netService setTXTRecordData:txtData];
-
             [[NSNotificationCenter defaultCenter]
              addObserver:self
              selector:@selector(handleNetworkChange:)
@@ -189,6 +177,8 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
         } else {
             NSLog(@"Error in acceptOnPort:error: -> %@", err);
         }
+
+        _starting = NO;
     }
 }
 
@@ -205,8 +195,6 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 - (void)stop {
 
     if (_netService != nil) {
-
-        self.deviceIdentifier = nil;
 
         [[NSNotificationCenter defaultCenter]
          removeObserver:self
@@ -302,6 +290,8 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 	if (sock != _listenSocket) {
         NSLog(@"Client Disconnected");
 
+        [sock disconnect];
+        
 		@synchronized(_connectedSockets) {
 			[_connectedSockets removeObject:sock];
 		}
@@ -319,20 +309,21 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
 #pragma mark - Instance methods
 
-- (void)sendBroadcastMessage:(PBRemoteMessage *)message {
+- (void)sendMessage:(PBRemoteMessage *)message {
 
     for (GCDAsyncSocket *socket in _connectedSockets) {
-        [self sendMessage:message socket:socket];
+        [self sendMessage:message raw:NO socket:socket];
     }
 }
 
-- (void)sendMessage:(PBRemoteMessage *)message socket:(GCDAsyncSocket *)socket {
+- (void)sendRawMessage:(PBRemoteMessage *)message {
 
-    PBRemoteNotificationMessage *noti = (id)message;
-
-    if ([noti isKindOfClass:[PBRemoteNotificationMessage class]]) {
-//        NSLog(@"sending %@...", noti.notificationName);
+    for (GCDAsyncSocket *socket in _connectedSockets) {
+        [self sendMessage:message raw:YES socket:socket];
     }
+}
+
+- (void)sendMessage:(PBRemoteMessage *)message raw:(BOOL)raw socket:(GCDAsyncSocket *)socket {
 
     NSData *packet;
 
@@ -354,19 +345,14 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
     @synchronized (self) {
 
-        static NSData *preambleData = nil;
-
-        if (preambleData == nil) {
-            preambleData = [PBRemoteMessage.messagePreamble dataUsingEncoding:NSUTF8StringEncoding];
-        }
+        NSData *preamble = raw ? PBRemoteMessage.rawMessagePreamble : PBRemoteMessage.messagePreamble;
 
         uint32_t length = (uint32_t)packet.length;
         NSData *lengthData = [NSData dataWithBytes:&length length:sizeof(length)];
 
-        [socket writeData:preambleData withTimeout:-1.0f tag:0];
+        [socket writeData:preamble withTimeout:-1.0f tag:0];
         [socket writeData:lengthData withTimeout:-1.0f tag:0];
         [socket writeData:packet withTimeout:-1.0f tag:0];
-//        [socket writeData:[GCDAsyncSocket CRLFData] withTimeout:-1.0f tag:0];
     }
 }
 
@@ -406,8 +392,11 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
             [self cleanupClient:clientInfo];
         } else {
             if (_maxClients < 0 || _maxClients < _clients.count) {
-                clientInfo = [[PBRemoteClientInfo alloc] init];
-                [_clients setObject:clientInfo forKey:netService.name];
+                if (_onlyConnectToRegisteredDevices == NO ||
+                    [_registeredDevices containsObject:netService.name]) {
+                    clientInfo = [[PBRemoteClientInfo alloc] init];
+                    [_clients setObject:clientInfo forKey:netService.name];
+                }
             }
         }
 
@@ -531,31 +520,15 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 - (void)handleNetworkChange:(NSNotification *)notice {
     NetworkStatus status = [self.reachability currentReachabilityStatus];
 
-    NetworkStatus startStatus;
-
-#if TARGET_OS_IPHONE
-    startStatus = ReachableViaWWAN;
-#else
-    startStatus = ReachableViaWWAN;
-#endif
-
     //handle change in network
-    if (status == startStatus) {
+    if (status == ReachableViaWWAN) {
         [self stop];
         [self doStart];
     }
 }
 
 - (BOOL)isWifiAvailable {
-    NetworkStatus wifiStatus;
-
-#if TARGET_OS_IPHONE
-    wifiStatus = ReachableViaWiFi;
-#else
-    wifiStatus = ReachableViaWiFi;
-#endif
-
-    return (self.reachability.currentReachabilityStatus == wifiStatus);
+    return (self.reachability.currentReachabilityStatus == ReachableViaWiFi);
 }
 
 #pragma mark - Singleton Methods

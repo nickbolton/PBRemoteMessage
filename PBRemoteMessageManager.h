@@ -11,7 +11,6 @@
 
 @protocol PBRemoteMessageDelegate <NSObject>
 
-@required
 - (void)handleRawMessage:(NSData *)rawMessageData;
 
 @optional
@@ -39,7 +38,8 @@ extern NSString * const kPBPongNotification;
 
 - (void)startWithServiceName:(NSString *)serviceName;
 - (void)stop;
-- (void)sendBroadcastMessage:(PBRemoteMessage *)message;
+- (void)sendMessage:(PBRemoteMessage *)message;
+- (void)sendRawMessage:(PBRemoteMessage *)message;
 - (NSString *)serviceType;
 - (void)registeredDevice:(NSString *)deviceIdentifier;
 - (void)unregisterDevice:(NSString *)deviceIdentifier;
