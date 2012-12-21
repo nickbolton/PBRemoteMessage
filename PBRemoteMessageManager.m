@@ -114,7 +114,9 @@ NSString * const kPBPongNotification = @"kPBPongNotification";
 
         self.serviceName = serviceName;
 
-        [self doStart];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self doStart];
+        });
     }
 }
 
