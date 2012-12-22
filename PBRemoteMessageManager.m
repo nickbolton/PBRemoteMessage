@@ -51,7 +51,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 @property (nonatomic, strong) NSMutableSet *registeredDevices;
 @property (nonatomic, strong) NSManagedObjectID *userIdentityObjectID;
 
-@property (nonatomic, strong) NSMutableDictionary *connectedIdentities;
+@property (nonatomic, strong) NSMutableDictionary *connectedIdentitiesMap;
 
 @end
 
@@ -62,9 +62,11 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
     if (self != nil) {
 
+        _maxReadTime = MAXFLOAT;
+
         self.clients = [NSMutableDictionary dictionary];
         self.registeredDevices = [NSMutableSet set];
-        self.connectedIdentities = [NSMutableDictionary dictionary];
+        self.connectedIdentitiesMap = [NSMutableDictionary dictionary];
 
         _maxClients = -1.0f;
 
@@ -240,9 +242,9 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
 - (NSArray *)connectedIdentities {
 
-    NSMutableArray *result = [NSMutableArray arrayWithCapacity:_connectedIdentities.count];
+    NSMutableArray *result = [NSMutableArray arrayWithCapacity:_connectedIdentitiesMap.count];
 
-    for (NSManagedObjectID *objectID in _connectedIdentities.allValues) {
+    for (NSManagedObjectID *objectID in _connectedIdentitiesMap.allValues) {
 
         PBUserIdentity *userIdentity =
         [PBUserIdentity userIdentityWithID:objectID];
@@ -278,7 +280,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         }
 
         [_clients removeAllObjects];
-        [_connectedIdentities removeAllObjects];
+        [_connectedIdentitiesMap removeAllObjects];
 
         @synchronized (_connectedSockets) {
             for (GCDAsyncSocket *socket in _connectedSockets) {
@@ -343,7 +345,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
         [userIdentity save];
 
-        [_connectedIdentities setObject:userIdentity.objectID forKey:clientID];
+        [_connectedIdentitiesMap setObject:userIdentity.objectID forKey:clientID];
 
         if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
             [_delegate userIdentityConnected:userIdentity];
@@ -522,7 +524,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
         if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
 
-            NSManagedObjectID *objectID = [_connectedIdentities objectForKey:netService.name];
+            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:netService.name];
 
             PBUserIdentity *userIdentity =
             [PBUserIdentity userIdentityWithID:objectID];
@@ -532,7 +534,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
             }
         }
 
-        [_connectedIdentities removeObjectForKey:netService.name];
+        [_connectedIdentitiesMap removeObjectForKey:netService.name];
     }
 }
 
@@ -609,7 +611,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
             if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
 
-                NSManagedObjectID *objectID = [_connectedIdentities objectForKey:keyToRemove];
+                NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:keyToRemove];
 
                 PBUserIdentity *userIdentity =
                 [PBUserIdentity userIdentityWithID:objectID];
@@ -619,7 +621,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
                 }
             }
 
-            [_connectedIdentities removeObjectForKey:keyToRemove];
+            [_connectedIdentitiesMap removeObjectForKey:keyToRemove];
         }
         
         [self cleanupClient:clientInfo];

@@ -39,6 +39,7 @@ typedef enum {
     NSTimeInterval _roundTripRunningTime;
     NSInteger _roundTripCount;
     NSInteger _timeoutCount;
+    NSTimeInterval _packetReadStartTime;
 
     MMMessageReadState _messageState;
     BOOL _raw;
@@ -57,7 +58,7 @@ typedef enum {
 - (id)init {
     self = [super init];
     if (self) {
-
+        
         self.messageClasses = [NSMutableSet set];
         self.preambleBuffer = [NSMutableData dataWithCapacity:20];
         
@@ -395,6 +396,7 @@ typedef enum {
 }
 
 - (void)readPreamble:(NSData *)data {
+    _packetReadStartTime = [NSDate timeIntervalSinceReferenceDate];
     [_preambleBuffer appendData:data];
     [self readDataForNextMessageState];
 }
@@ -416,38 +418,45 @@ typedef enum {
 
     if (data.length == _packetLength) {
 
-        if (_raw) {
+        NSTimeInterval totalReadTime = [NSDate timeIntervalSinceReferenceDate] - _packetReadStartTime;
 
-            if (_globalDelegate != nil) {
-                [_globalDelegate handleRawMessage:data];
+        if (totalReadTime < [PBRemoteMessageManager sharedInstance].maxReadTime) {
+
+            if (_raw) {
+
+                if (_globalDelegate != nil) {
+                    [_globalDelegate handleRawMessage:data];
+                } else {
+                    NSLog(@"No global delegate to handle raw message.");
+                }
+
             } else {
-                NSLog(@"No global delegate to handle raw message.");
-            }
 
+                NSDictionary *packet =
+                [NSPropertyListSerialization
+                 propertyListFromData:data
+                 mutabilityOption:NSPropertyListImmutable
+                 format:NULL
+                 errorDescription:NULL];
+
+//                NSLog(@"read packet: %@", packet);
+
+                if (packet != nil) {
+
+                    NSString *messageID =
+                    [packet objectForKey:kPBRemoteMessageIDKey];
+
+                    NSDictionary *payload =
+                    [packet objectForKey:kPBRemotePayloadKey];
+                    
+                    [self handleMessage:messageID payload:payload];
+                    
+                } else {
+                    NSLog(@"empty packet: %@", data);
+                }
+            }
         } else {
-
-            NSDictionary *packet =
-            [NSPropertyListSerialization
-             propertyListFromData:data
-             mutabilityOption:NSPropertyListImmutable
-             format:NULL
-             errorDescription:NULL];
-
-//            NSLog(@"read packet: %@", packet);
-
-            if (packet != nil) {
-
-                NSString *messageID =
-                [packet objectForKey:kPBRemoteMessageIDKey];
-
-                NSDictionary *payload =
-                [packet objectForKey:kPBRemotePayloadKey];
-
-                [self handleMessage:messageID payload:payload];
-
-            } else {
-                NSLog(@"empty packet: %@", data);
-            }
+            NSLog(@"packet dropped for exceeding max read time (%f > %f)", totalReadTime, [PBRemoteMessageManager sharedInstance].maxReadTime);
         }
 
     } else {

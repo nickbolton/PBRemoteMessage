@@ -42,6 +42,7 @@ extern NSString * const kPBUserIdentityEmailKey;
 @property (nonatomic, strong) NSString *deviceIdentifier;
 @property (nonatomic, readonly) Reachability *reachability;
 @property (nonatomic, readonly) PBUserIdentity *userIdentity;
+@property (nonatomic) NSTimeInterval maxReadTime;
 
 + (PBRemoteMessageManager *)sharedInstance;
 
