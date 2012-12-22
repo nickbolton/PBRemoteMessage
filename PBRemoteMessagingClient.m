@@ -14,6 +14,8 @@
 #import "GCDAsyncSocket.h"
 #import "NSString+GUID.h"
 #import "PBRemoteNotificationMessage.h"
+#import "PBUserIdentity.h"
+#import "NSString+Utilities.h"
 
 #define READ_TIMEOUT 15.0
 #define READ_TIMEOUT_EXTENSION 10.0
@@ -31,6 +33,7 @@ typedef enum {
 
     BOOL _connected;
     BOOL _started;
+    BOOL _sentUserIdentity;
 
     NSTimeInterval _pingStartedTime;
     NSTimeInterval _roundTripRunningTime;
@@ -120,6 +123,19 @@ typedef enum {
     _roundTripCount++;
     _averageRoundTripTime = _roundTripRunningTime / _roundTripCount;
     _pingStartedTime = 0;
+
+    PBUserIdentity *userIdentity =
+    [PBRemoteMessageManager sharedInstance].userIdentity;
+
+    _sentUserIdentity |= userIdentity == nil;
+
+    if (_sentUserIdentity == NO) {
+
+        NSString *sentUsername =
+        [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
+
+        _sentUserIdentity = [userIdentity.username isEqualToString:sentUsername];
+    }
 }
 
 - (void)sendPing {
@@ -131,8 +147,27 @@ typedef enum {
         NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
         _pingStartedTime = now;
 
+        NSDictionary *userIdentityInfo = nil;
+
+        if (_sentUserIdentity == NO) {
+
+            PBUserIdentity *userIdentity =
+            [PBRemoteMessageManager sharedInstance].userIdentity;
+
+            if (userIdentity != nil) {
+                userIdentityInfo =
+                @{
+                kPBUserIdentityDeviceIDKey : [NSString deviceIdentifier],
+                kPBUserIdentityUsernameKey : userIdentity.username,
+                kPBUserIdentityFullNameKey : [NSString safeString:userIdentity.fullName],
+                kPBUserIdentityEmailKey : [NSString safeString:userIdentity.email],
+                };
+            }
+        }
+
         [PBRemoteNotificationMessage
-         sendNotification:kPBPingNotification];
+         sendNotification:kPBPingNotification
+         userInfo:userIdentityInfo];
 
         int64_t delayInSeconds = pingTimeout;
         dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
@@ -152,6 +187,8 @@ typedef enum {
                     if (_started) {
                         [self start];
                     }
+                } else {
+                    [self sendPing];
                 }
             } else {
                 _timeoutCount = 0;

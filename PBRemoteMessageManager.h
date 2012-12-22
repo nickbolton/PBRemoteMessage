@@ -8,6 +8,7 @@
 
 @class PBRemoteMessage;
 @class Reachability;
+@class PBUserIdentity;
 
 @protocol PBRemoteMessageDelegate <NSObject>
 
@@ -16,6 +17,9 @@
 @optional
 - (void)clientConnected:(NSString *)clientDeviceIdentifier;
 - (void)clientDisconnected:(NSString *)clientDeviceIdentifier;
+- (void)userIdentity:(NSString **)username fullName:(NSString **)fullName email:(NSString **)email;
+- (void)userIdentityConnected:(PBUserIdentity *)userIdentity;
+- (void)userIdentityDisconnected:(PBUserIdentity *)userIdentity;
 
 @end
 
@@ -25,6 +29,10 @@ extern NSString * const kPBRemoteMessageManagerActiveNotification;
 extern NSString * const kPBRemoteMessageManagerInactiveNotification;
 extern NSString * const kPBPingNotification;
 extern NSString * const kPBPongNotification;
+extern NSString * const kPBUserIdentityDeviceIDKey;
+extern NSString * const kPBUserIdentityUsernameKey;
+extern NSString * const kPBUserIdentityFullNameKey;
+extern NSString * const kPBUserIdentityEmailKey;
 
 @interface PBRemoteMessageManager : NSObject
 
@@ -33,6 +41,7 @@ extern NSString * const kPBPongNotification;
 @property (nonatomic) BOOL onlyConnectToRegisteredDevices;
 @property (nonatomic, strong) NSString *deviceIdentifier;
 @property (nonatomic, readonly) Reachability *reachability;
+@property (nonatomic, readonly) PBUserIdentity *userIdentity;
 
 + (PBRemoteMessageManager *)sharedInstance;
 
@@ -46,5 +55,6 @@ extern NSString * const kPBPongNotification;
 - (BOOL)isConnectedToClient:(NSString *)clientIdentifier;
 - (BOOL)hasConnections;
 - (NSTimeInterval)averageClientRoundTripTime;
+- (NSArray *)connectedIdentities;
 
 @end
