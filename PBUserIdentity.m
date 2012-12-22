@@ -34,12 +34,7 @@
         request.predicate =
         [NSPredicate predicateWithFormat:@"username = %@", username];
 
-        NSError *error = nil;
-
-        results = [context executeFetchRequest:request error:&error];
-        if (error != nil) {
-            NSLog(@"Error: %@", error);
-        }
+        results = [self executeRequest:request inContext:context];
     }
 
     if (results.count > 0) {
@@ -91,6 +86,59 @@
         return userIdentity;
     }
     return nil;
+}
+
++ (NSArray *)allUsers {
+
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    NSEntityDescription *entity =
+    [NSEntityDescription
+     entityForName:NSStringFromClass([self class])
+     inManagedObjectContext:context];
+
+    NSFetchRequest *request = [[NSFetchRequest alloc] init];
+    [request setEntity:entity];
+
+    return [self executeRequest:request inContext:context];
+}
+
++ (NSArray *)executeRequest:(NSFetchRequest *)request
+             inContext:(NSManagedObjectContext *)context {
+
+    __block NSArray *results = nil;
+    [context performBlockAndWait:^{
+
+        @try {
+            NSError *error = nil;
+            results = [context executeFetchRequest:request error:&error];
+
+            if (error != nil) {
+                NSLog(@"Error: %@", error);
+            }
+
+        } @catch (NSException *exception) {
+            NSLog(@"Error: %@", exception);
+            results = nil;
+        }
+        
+    }];
+    
+	return results;
+}
+
++ (void)removeUserIdentityWithID:(NSManagedObjectID *)objectID {
+
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    PBUserIdentity *userIdentity = [self userIdentityWithID:objectID];
+
+    if (userIdentity != nil) {
+        [context deleteObject:userIdentity];
+    }
+
 }
 
 - (void)save {

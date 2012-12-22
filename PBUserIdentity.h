@@ -21,6 +21,10 @@
 + (PBUserIdentity *)createUserIdentityWithUsername:(NSString *)username
                                           fullName:(NSString *)fullName
                                              email:(NSString *)email;
++ (void)removeUserIdentityWithID:(NSManagedObjectID *)objectID;
+
++ (NSArray *)allUsers;
+
 - (void)save;
 
 @end
