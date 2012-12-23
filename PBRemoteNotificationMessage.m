@@ -38,6 +38,24 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
      sendMessage:message];
 }
 
++ (void)sendNotification:(NSString *)notificationName
+            toRecipients:(NSArray *)recipients {
+    [self sendNotification:notificationName userInfo:nil toRecipients:recipients];
+}
+
++ (void)sendNotification:(NSString *)notificationName
+                userInfo:(NSDictionary *)userInfo
+            toRecipients:(NSArray *)recipients {
+
+    PBRemoteNotificationMessage *message =
+    [[PBRemoteNotificationMessage alloc]
+     initWithNotificationName:notificationName
+     userInfo:userInfo];
+
+    [[PBRemoteMessageManager sharedInstance]
+     sendMessage:message toRecipients:recipients];
+}
+
 - (id)initWithNotificationName:(NSString *)notificationName
                       userInfo:(NSDictionary *)userInfo {
 

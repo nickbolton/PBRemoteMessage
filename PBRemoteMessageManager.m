@@ -563,26 +563,34 @@ NSString * const kPBClientIDKey = @"client-id";
 #pragma mark - Instance methods
 
 - (void)sendMessage:(PBRemoteMessage *)message
-             toUser:(PBUserIdentity *)userIdentity {
+       toRecipients:(NSArray *)recipients {
 
-    GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
+    for (PBUserIdentity *userIdentity in recipients) {
+        if ([userIdentity isKindOfClass:[PBUserIdentity class]]) {
+            GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
 
-    if (socket != nil) {
-        [self sendMessage:message raw:NO socket:socket];
-    } else {
-        NSLog(@"Warn: attempted to send p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+            if (socket != nil) {
+                [self sendMessage:message raw:NO socket:socket];
+            } else {
+                NSLog(@"Warn: attempted to send p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+            }
+        }
     }
 }
 
 - (void)sendRawMessage:(PBRemoteMessage *)message
-                toUser:(PBUserIdentity *)userIdentity {
+          toRecipients:(NSArray *)recipients {
 
-    GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
+    for (PBUserIdentity *userIdentity in recipients) {
+        if ([userIdentity isKindOfClass:[PBUserIdentity class]]) {
+            GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
 
-    if (socket != nil) {
-        [self sendMessage:message raw:YES socket:socket];
-    } else {
-        NSLog(@"Warn: attempted to send raw p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+            if (socket != nil) {
+                [self sendMessage:message raw:YES socket:socket];
+            } else {
+                NSLog(@"Warn: attempted to send raw p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+            }
+        }
     }
 }
 

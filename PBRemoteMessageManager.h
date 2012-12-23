@@ -52,9 +52,9 @@ extern NSString * const kPBUserIdentityEmailKey;
 - (void)sendMessage:(PBRemoteMessage *)message;
 - (void)sendRawMessage:(PBRemoteMessage *)message;
 - (void)sendMessage:(PBRemoteMessage *)message
-             toUser:(PBUserIdentity *)userIdentity;
+       toRecipients:(NSArray *)recipients;
 - (void)sendRawMessage:(PBRemoteMessage *)message
-                toUser:(PBUserIdentity *)userIdentity;
+          toRecipients:(NSArray *)recipients;
 - (NSString *)serviceType;
 - (void)registeredDevice:(NSString *)deviceIdentifier;
 - (void)unregisterDevice:(NSString *)deviceIdentifier;

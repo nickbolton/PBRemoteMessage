@@ -41,6 +41,14 @@
      sendRawMessage:message];
 }
 
++ (void)sendRawMessage:(NSData *)data toRecipients:(NSArray *)recipients {
+
+    PBRemoteMessage *message = [[PBRemoteMessage alloc] initWithRawData:data];
+
+    [[PBRemoteMessageManager sharedInstance]
+     sendRawMessage:message toRecipients:recipients];
+}
+
 - (id)initWithRawData:(NSData *)data {
 
     self = [super init];

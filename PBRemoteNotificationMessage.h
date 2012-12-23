@@ -20,4 +20,11 @@
 + (void)sendNotification:(NSString *)notificationName
                 userInfo:(NSDictionary *)userInfo;
 
++ (void)sendNotification:(NSString *)notificationName
+            toRecipients:(NSArray *)recipients;
++ (void)sendNotification:(NSString *)notificationName
+                userInfo:(NSDictionary *)userInfo
+            toRecipients:(NSArray *)recipients;
+
+
 @end

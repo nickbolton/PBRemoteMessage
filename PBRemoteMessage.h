@@ -19,6 +19,7 @@
 + (NSData *)rawMessagePreamble;
 
 + (void)sendRawMessage:(NSData *)data;
++ (void)sendRawMessage:(NSData *)data toRecipients:(NSArray *)recipients;
 
 - (id)initWithMessageID:(NSString *)messageID
                 payload:(NSDictionary *)payload;
