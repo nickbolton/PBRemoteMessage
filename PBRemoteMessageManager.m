@@ -14,6 +14,7 @@
 #import "GCDAsyncSocket.h"
 #import "PBRemoteClientInfo.h"
 #import "NSString+GUID.h"
+#import "NSString+Utilities.h"
 #import "PBUserIdentity.h"
 
 #define READ_TIMEOUT 15.0
@@ -26,10 +27,14 @@ NSString * const kPBRemoteMessageManagerInactiveNotification =
 @"kPBRemoteMessageManagerInactiveNotification";
 NSString * const kPBPingNotification = @"kPBPingNotification";
 NSString * const kPBPongNotification = @"kPBPongNotification";
-NSString * const kPBUserIdentityDeviceIDKey = @"userIdentity-deviceID";
+NSString * const kPBClientIdentityRequestNotification = @"kPBClientIdentityRequestNotification";
+NSString * const kPBClientIdentityResponseNotification = @"kPBClientIdentityResponseNotification";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
 NSString * const kPBUserIdentityFullNameKey = @"userIdentity-fullName";
 NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
+NSString * const kPBSocketKey = @"socket";
+NSString * const kPBServerIDKey = @"server-id";
+NSString * const kPBClientIDKey = @"client-id";
 
 @interface PBRemoteMessageManager()
 <NSNetServiceBrowserDelegate, NSNetServiceDelegate, PBRemoteMessagingClientDelegate>  {
@@ -47,11 +52,14 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
 @property (nonatomic, strong) NSNetServiceBrowser *netServiceBrowser;
 @property (nonatomic, strong) NSMutableDictionary *clients;
+@property (nonatomic, strong) NSMutableDictionary *clientSocketMap;
 
 @property (nonatomic, strong) NSMutableSet *registeredDevices;
 @property (nonatomic, strong) NSManagedObjectID *userIdentityObjectID;
 
 @property (nonatomic, strong) NSMutableDictionary *connectedIdentitiesMap;
+
+@property (nonatomic, strong) NSMutableDictionary *socketIdentificationMap;
 
 @end
 
@@ -67,6 +75,8 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         self.clients = [NSMutableDictionary dictionary];
         self.registeredDevices = [NSMutableSet set];
         self.connectedIdentitiesMap = [NSMutableDictionary dictionary];
+        self.clientSocketMap = [NSMutableDictionary dictionary];
+        self.socketIdentificationMap = [NSMutableDictionary dictionary];
 
         _maxClients = -1.0f;
 
@@ -79,6 +89,18 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
         self.reachability = [Reachability reachabilityForInternetConnection];
         [self.reachability startNotifier];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(handleIdentificationRequest:)
+         name:kPBClientIdentityRequestNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(handleIdentificationResponse:)
+         name:kPBClientIdentityResponseNotification
+         object:nil];
 
 #if TARGET_OS_IPHONE
         [[NSNotificationCenter defaultCenter]
@@ -100,6 +122,10 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 }
 
 - (void)dealloc {
+}
+
+- (NSString *)socketKey:(GCDAsyncSocket *)socket {
+    return [NSString stringWithFormat:@"%p", socket];
 }
 
 - (BOOL)hasConnections {
@@ -216,12 +242,6 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
              name:kReachabilityChangedNotification
              object:nil];
 
-            [[NSNotificationCenter defaultCenter]
-             addObserver:self
-             selector:@selector(handlePing:)
-             name:kPBPingNotification
-             object:nil];
-            
         } else {
             NSLog(@"Error in acceptOnPort:error: -> %@", err);
         }
@@ -257,6 +277,26 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
     return result;
 }
 
+- (GCDAsyncSocket *)socketForUserIdentity:(PBUserIdentity *)userIdentity {
+
+    NSString *clientID = nil;
+
+    for (NSString *deviceID in _connectedIdentitiesMap) {
+
+        NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
+        if ([objectID isEqual:userIdentity.objectID]) {
+            clientID = deviceID;
+            break;
+        }
+    }
+
+    if (clientID != nil) {
+        return [_clientSocketMap objectForKey:clientID];
+    }
+
+    return nil;
+}
+
 - (void)stop {
 
     if (_netService != nil) {
@@ -264,11 +304,6 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         [[NSNotificationCenter defaultCenter]
          removeObserver:self
          name:kReachabilityChangedNotification
-         object:nil];
-
-        [[NSNotificationCenter defaultCenter]
-         removeObserver:self
-         name:kPBPingNotification
          object:nil];
 
         [_listenSocket disconnect];
@@ -289,6 +324,11 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         }
 
         [_connectedSockets removeAllObjects];
+        [_clientSocketMap removeAllObjects];
+
+        @synchronized (_socketIdentificationMap) {
+            [_socketIdentificationMap removeAllObjects];
+        }
 
         self.netService = nil;
 
@@ -317,44 +357,99 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
     return avgTime / (NSTimeInterval)count;
 }
 
-- (void)handlePing:(NSNotification *)notification {
+- (void)handleIdentificationRequest:(NSNotification *)notification {
 
-    NSString *clientID =
-    [notification.userInfo objectForKey:kPBUserIdentityDeviceIDKey];
-    NSString *username =
-    [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
-    NSString *fullName =
-    [notification.userInfo objectForKey:kPBUserIdentityFullNameKey];
-    NSString *email =
-    [notification.userInfo objectForKey:kPBUserIdentityEmailKey];
+    NSLog(@"received identity request...");
 
-    if (username.length > 0) {
-        PBUserIdentity *userIdentity =
-        [PBUserIdentity userIdentityWithUsername:username];
+    NSMutableDictionary *userInfo = [notification.userInfo mutableCopy];
+    [userInfo setObject:[NSString deviceIdentifier] forKey:kPBClientIDKey];
 
-        if (userIdentity == nil) {
-            userIdentity =
-            [PBUserIdentity
-             createUserIdentityWithUsername:username
-             fullName:fullName
-             email:email];
-        } else {
-            userIdentity.fullName = fullName;
-            userIdentity.email = email;
-        }
-
-        [userIdentity save];
-
-        [_connectedIdentitiesMap setObject:userIdentity.objectID forKey:clientID];
-
-        if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
-            [_delegate userIdentityConnected:userIdentity];
-        }
+    if (self.userIdentity != nil) {
+        [userInfo addEntriesFromDictionary:
+        @{
+        kPBUserIdentityUsernameKey : self.userIdentity.username,
+        kPBUserIdentityFullNameKey : [NSString safeString:self.userIdentity.fullName],
+        kPBUserIdentityEmailKey : [NSString safeString:self.userIdentity.email],
+        }];
     }
 
+    NSLog(@"sending identity response...");
+
     [PBRemoteNotificationMessage
-     sendNotification:kPBPongNotification
-     userInfo:notification.userInfo];
+     sendNotification:kPBClientIdentityResponseNotification
+     userInfo:userInfo];
+}
+
+- (void)handleIdentificationResponse:(NSNotification *)notification {
+
+    NSLog(@"receved identity response...");
+
+    NSString *serverID = [notification.userInfo objectForKey:kPBServerIDKey];
+    NSString *clientID = [notification.userInfo objectForKey:kPBClientIDKey];
+    NSString *clientSocketKey = [notification.userInfo objectForKey:kPBSocketKey];
+    NSString *username = [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
+    NSString *fullName = [notification.userInfo objectForKey:kPBUserIdentityFullNameKey];
+    NSString *email = [notification.userInfo objectForKey:kPBUserIdentityEmailKey];
+
+    if ([[NSString deviceIdentifier] isEqualToString:serverID]) {
+
+        if (clientSocketKey != nil) {
+
+            @synchronized (_socketIdentificationMap) {
+                [_socketIdentificationMap removeObjectForKey:clientSocketKey];
+            }
+
+            for (GCDAsyncSocket *socket in _connectedSockets) {
+
+                NSString *socketKey = [self socketKey:socket];
+
+                if ([socketKey isEqualToString:clientSocketKey]) {
+                    [_clientSocketMap setObject:socket forKey:clientID];
+
+                    [[NSNotificationCenter defaultCenter]
+                     postNotificationName:kPBRemoteMessageManagerActiveNotification
+                     object:self
+                     userInfo:nil];
+
+                    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+                        NSLog(@"device connected: %@", clientID);
+                        [_delegate clientConnected:clientID];
+                    }
+
+                    if (username.length > 0) {
+                        PBUserIdentity *userIdentity =
+                        [PBUserIdentity userIdentityWithUsername:username];
+
+                        if (userIdentity == nil) {
+                            userIdentity =
+                            [PBUserIdentity
+                             createUserIdentityWithUsername:username
+                             fullName:fullName
+                             email:email];
+                        } else {
+                            userIdentity.fullName = fullName;
+                            userIdentity.email = email;
+                        }
+
+                        [userIdentity save];
+
+                        [_connectedIdentitiesMap setObject:userIdentity.objectID forKey:clientID];
+                        
+                        if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
+                            
+                            NSLog(@"user connected: %@", userIdentity.username);
+                            [_delegate userIdentityConnected:userIdentity];
+                        }
+                    }
+
+                    break;
+                }
+            }
+
+        } else {
+            NSLog(@"Error: missing socket value.");
+        }
+    }
 }
 
 - (void)applicationDidEnterBackground:(NSNotification *)notification {
@@ -378,12 +473,62 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 	}
 
     if (socketAdded) {
-        [[NSNotificationCenter defaultCenter]
-         postNotificationName:kPBRemoteMessageManagerActiveNotification
-         object:self
-         userInfo:nil];
+
+        [self identifySocket:newSocket];
+
     } else {
         [newSocket disconnect];
+    }
+}
+
+- (void)identifySocket:(GCDAsyncSocket *)socket {
+
+    NSLog(@"sending identity request...");
+
+    NSDictionary *userInfo =
+    @{
+    kPBServerIDKey : [NSString deviceIdentifier],
+    kPBSocketKey : [self socketKey:socket],
+    };
+
+    PBRemoteNotificationMessage *identityRequest =
+    [[PBRemoteNotificationMessage alloc]
+     initWithNotificationName:kPBClientIdentityRequestNotification
+     userInfo:userInfo];
+
+    [self sendMessage:identityRequest raw:NO socket:socket];
+
+    NSString *socketKey = [self socketKey:socket];
+
+    [_socketIdentificationMap
+     setObject:@([NSDate timeIntervalSinceReferenceDate])
+     forKey:socketKey];
+
+    int64_t delayInSeconds = 1.0f;
+    dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+    dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+
+        @synchronized (_socketIdentificationMap) {
+
+            NSNumber *timestamp =
+            [_socketIdentificationMap objectForKey:socketKey];
+
+            if (timestamp != nil) {
+                [self identifySocket:socket];
+            }
+        }
+    });
+}
+
+- (void)removeSocketMapping:(GCDAsyncSocket *)targetSocket {
+
+    for (NSString *clientID in _clientSocketMap) {
+
+        GCDAsyncSocket *socket = [_clientSocketMap objectForKey:clientID];
+        if (socket == targetSocket) {
+            [_clientSocketMap removeObjectForKey:clientID];
+            break;
+        }
     }
 }
 
@@ -394,8 +539,15 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         [sock disconnect];
         
 		@synchronized(_connectedSockets) {
+            [self removeSocketMapping:sock];
 			[_connectedSockets removeObject:sock];
 		}
+
+        NSString *socketKey = [self socketKey:sock];
+
+        @synchronized (_socketIdentificationMap) {
+            [_socketIdentificationMap removeObjectForKey:socketKey];
+        }
 	}
 }
 
@@ -409,6 +561,30 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 }
 
 #pragma mark - Instance methods
+
+- (void)sendMessage:(PBRemoteMessage *)message
+             toUser:(PBUserIdentity *)userIdentity {
+
+    GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
+
+    if (socket != nil) {
+        [self sendMessage:message raw:NO socket:socket];
+    } else {
+        NSLog(@"Warn: attempted to send p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+    }
+}
+
+- (void)sendRawMessage:(PBRemoteMessage *)message
+                toUser:(PBUserIdentity *)userIdentity {
+
+    GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
+
+    if (socket != nil) {
+        [self sendMessage:message raw:YES socket:socket];
+    } else {
+        NSLog(@"Warn: attempted to send raw p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
+    }
+}
 
 - (void)sendMessage:(PBRemoteMessage *)message {
 
@@ -426,7 +602,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
 - (void)sendMessage:(PBRemoteMessage *)message raw:(BOOL)raw socket:(GCDAsyncSocket *)socket {
 
-    NSData *packet;
+    NSData *packet = nil;
 
     if (message.rawData != nil) {
         packet = message.rawData;
@@ -437,23 +613,33 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         kPBRemotePayloadKey : message.payload,
         };
 
+        NSError *error = nil;
+
         packet =
         [NSPropertyListSerialization
          dataFromPropertyList:fullMessage
          format:NSPropertyListBinaryFormat_v1_0
-         errorDescription:NULL];
+         errorDescription:&error];
+
+        if (error != nil) {
+            NSLog(@"Error: %@", error);
+        }
     }
 
-    @synchronized (self) {
+    if (packet != nil) {
+        @synchronized (self) {
 
-        NSData *preamble = raw ? PBRemoteMessage.rawMessagePreamble : PBRemoteMessage.messagePreamble;
+            NSData *preamble = raw ? PBRemoteMessage.rawMessagePreamble : PBRemoteMessage.messagePreamble;
 
-        uint32_t length = (uint32_t)packet.length;
-        NSData *lengthData = [NSData dataWithBytes:&length length:sizeof(length)];
+            uint32_t length = (uint32_t)packet.length;
+            NSData *lengthData = [NSData dataWithBytes:&length length:sizeof(length)];
 
-        [socket writeData:preamble withTimeout:-1.0f tag:0];
-        [socket writeData:lengthData withTimeout:-1.0f tag:0];
-        [socket writeData:packet withTimeout:-1.0f tag:0];
+            [socket writeData:preamble withTimeout:-1.0f tag:0];
+            [socket writeData:lengthData withTimeout:-1.0f tag:0];
+            [socket writeData:packet withTimeout:-1.0f tag:0];
+        }
+    } else {
+        NSLog(@"Warn: no packet data");
     }
 }
 
@@ -530,6 +716,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
             [PBUserIdentity userIdentityWithID:objectID];
 
             if (userIdentity != nil) {
+                NSLog(@"user disconnected: %@", userIdentity.username);
                 [_delegate userIdentityDisconnected:userIdentity];
             }
         }
@@ -578,15 +765,15 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
 
 - (void)clientConnected:(PBRemoteMessagingClient *)client {
 
-    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
-
-        PBRemoteClientInfo *clientInfo =
-        [self clientInfoForClient:client];
-
-        if (clientInfo.netService.name.length > 0) {
-            [_delegate clientConnected:clientInfo.netService.name];
-        }
-    }
+//    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+//
+//        PBRemoteClientInfo *clientInfo =
+//        [self clientInfoForClient:client];
+//
+//        if (clientInfo.netService.name.length > 0) {
+//            [_delegate clientConnected:clientInfo.netService.name];
+//        }
+//    }
 }
 
 - (void)clientDisconnected:(PBRemoteMessagingClient *)client {
@@ -617,6 +804,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
                 [PBUserIdentity userIdentityWithID:objectID];
 
                 if (userIdentity != nil) {
+                    NSLog(@"user disconnected: %@", userIdentity.username);
                     [_delegate userIdentityDisconnected:userIdentity];
                 }
             }
@@ -629,6 +817,7 @@ NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
         if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
 
             if (clientInfo.netService.name.length > 0) {
+                NSLog(@"device disconnected: %@", clientInfo.netService.name);
                 [_delegate clientDisconnected:clientInfo.netService.name];
             }
         }

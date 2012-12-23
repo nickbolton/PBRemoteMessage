@@ -29,7 +29,8 @@ extern NSString * const kPBRemoteMessageManagerActiveNotification;
 extern NSString * const kPBRemoteMessageManagerInactiveNotification;
 extern NSString * const kPBPingNotification;
 extern NSString * const kPBPongNotification;
-extern NSString * const kPBUserIdentityDeviceIDKey;
+extern NSString * const kPBClientIdentityRequestNotification;
+extern NSString * const kPBClientIdentityResponseNotification;
 extern NSString * const kPBUserIdentityUsernameKey;
 extern NSString * const kPBUserIdentityFullNameKey;
 extern NSString * const kPBUserIdentityEmailKey;
@@ -50,6 +51,10 @@ extern NSString * const kPBUserIdentityEmailKey;
 - (void)stop;
 - (void)sendMessage:(PBRemoteMessage *)message;
 - (void)sendRawMessage:(PBRemoteMessage *)message;
+- (void)sendMessage:(PBRemoteMessage *)message
+             toUser:(PBUserIdentity *)userIdentity;
+- (void)sendRawMessage:(PBRemoteMessage *)message
+                toUser:(PBUserIdentity *)userIdentity;
 - (NSString *)serviceType;
 - (void)registeredDevice:(NSString *)deviceIdentifier;
 - (void)unregisterDevice:(NSString *)deviceIdentifier;

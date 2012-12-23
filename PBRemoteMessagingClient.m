@@ -33,12 +33,7 @@ typedef enum {
 
     BOOL _connected;
     BOOL _started;
-    BOOL _sentUserIdentity;
 
-    NSTimeInterval _pingStartedTime;
-    NSTimeInterval _roundTripRunningTime;
-    NSInteger _roundTripCount;
-    NSInteger _timeoutCount;
     NSTimeInterval _packetReadStartTime;
 
     MMMessageReadState _messageState;
@@ -91,12 +86,6 @@ typedef enum {
 
         _started = YES;
 
-        [[NSNotificationCenter defaultCenter]
-         addObserver:self
-         selector:@selector(handlePong:)
-         name:kPBPongNotification
-         object:nil];
-
         self.asyncSocket =
         [[GCDAsyncSocket alloc]
          initWithDelegate:self
@@ -115,87 +104,6 @@ typedef enum {
 
         [_asyncSocket disconnect];
         self.asyncSocket = nil;
-    }
-}
-
-- (void)handlePong:(NSNotification *)notification {
-    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-    _roundTripRunningTime += (now - _pingStartedTime);
-    _roundTripCount++;
-    _averageRoundTripTime = _roundTripRunningTime / _roundTripCount;
-    _pingStartedTime = 0;
-
-    PBUserIdentity *userIdentity =
-    [PBRemoteMessageManager sharedInstance].userIdentity;
-
-    _sentUserIdentity |= userIdentity == nil;
-
-    if (_sentUserIdentity == NO) {
-
-        NSString *sentUsername =
-        [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
-
-        _sentUserIdentity = [userIdentity.username isEqualToString:sentUsername];
-    }
-}
-
-- (void)sendPing {
-
-    if (_started) {
-        static NSTimeInterval pingTimeout = 1.0f;
-        static NSInteger maxTimeouts = 3;
-
-        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
-        _pingStartedTime = now;
-
-        NSDictionary *userIdentityInfo = nil;
-
-        if (_sentUserIdentity == NO) {
-
-            PBUserIdentity *userIdentity =
-            [PBRemoteMessageManager sharedInstance].userIdentity;
-
-            if (userIdentity != nil) {
-                userIdentityInfo =
-                @{
-                kPBUserIdentityDeviceIDKey : [NSString deviceIdentifier],
-                kPBUserIdentityUsernameKey : userIdentity.username,
-                kPBUserIdentityFullNameKey : [NSString safeString:userIdentity.fullName],
-                kPBUserIdentityEmailKey : [NSString safeString:userIdentity.email],
-                };
-            }
-        }
-
-        [PBRemoteNotificationMessage
-         sendNotification:kPBPingNotification
-         userInfo:userIdentityInfo];
-
-        int64_t delayInSeconds = pingTimeout;
-        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-
-            if (_pingStartedTime == now) {
-
-                // timeout
-
-                _timeoutCount++;
-
-                if (_timeoutCount >= maxTimeouts) {
-
-                    NSLog(@"max timeouts reached!");
-
-                    [self stop];
-                    if (_started) {
-                        [self start];
-                    }
-                } else {
-                    [self sendPing];
-                }
-            } else {
-                _timeoutCount = 0;
-                [self sendPing];
-            }
-        });
     }
 }
 
@@ -242,7 +150,6 @@ typedef enum {
 
     if (_connected == NO) {
         _connected = YES;
-        [self sendPing];
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
     }
 }
