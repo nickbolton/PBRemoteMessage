@@ -496,7 +496,7 @@ NSString * const kPBClientIDKey = @"client-id";
      initWithNotificationName:kPBClientIdentityRequestNotification
      userInfo:userInfo];
 
-    [self sendMessage:identityRequest raw:NO socket:socket];
+    [self sendMessage:identityRequest recipients:nil socket:socket];
 
     NSString *socketKey = [self socketKey:socket];
 
@@ -565,54 +565,26 @@ NSString * const kPBClientIDKey = @"client-id";
 - (void)sendMessage:(PBRemoteMessage *)message
        toRecipients:(NSArray *)recipients {
 
-    for (PBUserIdentity *userIdentity in recipients) {
-        if ([userIdentity isKindOfClass:[PBUserIdentity class]]) {
-            GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
-
-            if (socket != nil) {
-                [self sendMessage:message raw:NO socket:socket];
-            } else {
-                NSLog(@"Warn: attempted to send p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
-            }
-        }
-    }
-}
-
-- (void)sendRawMessage:(PBRemoteMessage *)message
-          toRecipients:(NSArray *)recipients {
-
-    for (PBUserIdentity *userIdentity in recipients) {
-        if ([userIdentity isKindOfClass:[PBUserIdentity class]]) {
-            GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
-
-            if (socket != nil) {
-                [self sendMessage:message raw:YES socket:socket];
-            } else {
-                NSLog(@"Warn: attempted to send raw p2p message for a client that has no socket mapping. user: %@", userIdentity.username);
-            }
-        }
+    for (GCDAsyncSocket *socket in _connectedSockets) {
+        [self sendMessage:message recipients:recipients socket:socket];
     }
 }
 
 - (void)sendMessage:(PBRemoteMessage *)message {
 
     for (GCDAsyncSocket *socket in _connectedSockets) {
-        [self sendMessage:message raw:NO socket:socket];
+        [self sendMessage:message recipients:nil socket:socket];
     }
 }
 
-- (void)sendRawMessage:(PBRemoteMessage *)message {
-
-    for (GCDAsyncSocket *socket in _connectedSockets) {
-        [self sendMessage:message raw:YES socket:socket];
-    }
-}
-
-- (void)sendMessage:(PBRemoteMessage *)message raw:(BOOL)raw socket:(GCDAsyncSocket *)socket {
+- (void)sendMessage:(PBRemoteMessage *)message
+         recipients:(NSArray *)recipientList
+             socket:(GCDAsyncSocket *)socket {
 
     NSData *packet = nil;
+    BOOL raw = message.rawData != nil;
 
-    if (message.rawData != nil) {
+    if (raw) {
         packet = message.rawData;
     } else {
         NSDictionary *fullMessage =
@@ -637,12 +609,53 @@ NSString * const kPBClientIDKey = @"client-id";
     if (packet != nil) {
         @synchronized (self) {
 
+            // write preamble
+
             NSData *preamble = raw ? PBRemoteMessage.rawMessagePreamble : PBRemoteMessage.messagePreamble;
+            [socket writeData:preamble withTimeout:-1.0f tag:0];
+
+            // write sender
+
+            NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentity.username;
+
+//            NSLog(@"sender: %@", sender);
+
+            uint32_t senderLength = (uint32_t)sender.length;
+
+            NSData *senderLengthData =
+            [NSData dataWithBytes:&senderLength length:sizeof(uint32_t)];
+
+            [socket writeData:senderLengthData withTimeout:-1.0f tag:0];
+            [socket writeData:[sender dataUsingEncoding:NSUTF8StringEncoding] withTimeout:-1.0f tag:0];
+
+            // write recipients
+
+            NSMutableString *recipients = [NSMutableString string];
+
+            for (PBUserIdentity *user in recipientList) {
+                if ([user isKindOfClass:[PBUserIdentity class]]) {
+                    if (recipients.length > 0) {
+                        [recipients appendString:@","];
+                    }
+                    [recipients appendString:user.username];
+                }
+            }
+
+//            NSLog(@"sending message with recipients: %@", recipients);
+
+            uint32_t recipientsLength = (uint32_t)recipients.length;
+
+            NSData *recipientsLengthData =
+            [NSData dataWithBytes:&recipientsLength length:sizeof(uint32_t)];
+
+            [socket writeData:recipientsLengthData withTimeout:-1.0f tag:0];
+            [socket writeData:[recipients dataUsingEncoding:NSUTF8StringEncoding] withTimeout:-1.0f tag:0];
+
+            // write packet data
 
             uint32_t length = (uint32_t)packet.length;
             NSData *lengthData = [NSData dataWithBytes:&length length:sizeof(length)];
 
-            [socket writeData:preamble withTimeout:-1.0f tag:0];
             [socket writeData:lengthData withTimeout:-1.0f tag:0];
             [socket writeData:packet withTimeout:-1.0f tag:0];
         }

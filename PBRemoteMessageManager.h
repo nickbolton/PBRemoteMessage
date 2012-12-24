@@ -12,7 +12,10 @@
 
 @protocol PBRemoteMessageDelegate <NSObject>
 
-- (void)handleRawMessage:(NSData *)rawMessageData;
+- (void)handleRawMessage:(NSData *)rawMessageData
+                  sender:(NSString *)sender
+              recipients:(NSArray *)recipients
+             peerMessage:(BOOL)peerMessage;
 
 @optional
 - (void)clientConnected:(NSString *)clientDeviceIdentifier;
@@ -32,6 +35,7 @@ extern NSString * const kPBPongNotification;
 extern NSString * const kPBClientIdentityRequestNotification;
 extern NSString * const kPBClientIdentityResponseNotification;
 extern NSString * const kPBUserIdentityUsernameKey;
+extern NSString * const kPBUserIdentityUsernameKey;
 extern NSString * const kPBUserIdentityFullNameKey;
 extern NSString * const kPBUserIdentityEmailKey;
 
@@ -50,11 +54,8 @@ extern NSString * const kPBUserIdentityEmailKey;
 - (void)startWithServiceName:(NSString *)serviceName;
 - (void)stop;
 - (void)sendMessage:(PBRemoteMessage *)message;
-- (void)sendRawMessage:(PBRemoteMessage *)message;
 - (void)sendMessage:(PBRemoteMessage *)message
        toRecipients:(NSArray *)recipients;
-- (void)sendRawMessage:(PBRemoteMessage *)message
-          toRecipients:(NSArray *)recipients;
 - (NSString *)serviceType;
 - (void)registeredDevice:(NSString *)deviceIdentifier;
 - (void)unregisterDevice:(NSString *)deviceIdentifier;

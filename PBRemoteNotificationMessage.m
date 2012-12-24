@@ -69,19 +69,30 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
     kPBRemoteUserInfoKey : userInfo,
     };
 
-    self = [self initWithMessageID:kPBRemoteNotificationMessageID
-                           payload:payload];
+    self = [self
+            initWithMessageID:kPBRemoteNotificationMessageID
+            sender:nil
+            recipients:nil
+            peerMessage:NO
+            payload:payload];
 
     return self;
 }
 
 - (id)initWithMessageID:(NSString *)messageID
+                 sender:(PBUserIdentity *)sender
+             recipients:(NSArray *)recipients
+            peerMessage:(BOOL)peerMessage
                 payload:(NSDictionary *)payload {
 
     if ([messageID isEqualToString:kPBRemoteNotificationMessageID]) {
 
-        self = [super initWithMessageID:kPBRemoteNotificationMessageID
-                                payload:payload];
+        self = [super
+                initWithMessageID:kPBRemoteNotificationMessageID
+                sender:sender
+                recipients:recipients
+                peerMessage:peerMessage
+                payload:payload];
 
         if (self != nil) {
 

@@ -14,6 +14,9 @@
 @property (nonatomic, readwrite) NSDictionary *payload;
 @property (nonatomic, readwrite) NSString *messageID;
 @property (nonatomic, readwrite) NSData *rawData;
+@property (nonatomic, readwrite) NSString *sender;
+@property (nonatomic, readwrite) NSArray *recipients;
+@property (nonatomic, readwrite) BOOL peerMessage;
 
 @end
 
@@ -21,6 +24,9 @@
 
 
 - (id)initWithMessageID:(NSString *)messageID
+                 sender:(PBUserIdentity *)sender
+             recipients:(NSArray *)recipients
+            peerMessage:(BOOL)peerMessage
                 payload:(NSDictionary *)payload {
 
     self = [super init];
@@ -28,6 +34,9 @@
     if (self != nil) {
         self.messageID = messageID;
         self.payload = payload;
+        self.sender = sender;
+        self.peerMessage = peerMessage;
+        self.recipients = recipients;
     }
 
     return self;
@@ -38,7 +47,7 @@
     PBRemoteMessage *message = [[PBRemoteMessage alloc] initWithRawData:data];
 
     [[PBRemoteMessageManager sharedInstance]
-     sendRawMessage:message];
+     sendMessage:message];
 }
 
 + (void)sendRawMessage:(NSData *)data toRecipients:(NSArray *)recipients {
@@ -46,7 +55,7 @@
     PBRemoteMessage *message = [[PBRemoteMessage alloc] initWithRawData:data];
 
     [[PBRemoteMessageManager sharedInstance]
-     sendRawMessage:message toRecipients:recipients];
+     sendMessage:message toRecipients:recipients];
 }
 
 - (id)initWithRawData:(NSData *)data {

@@ -24,7 +24,11 @@ typedef enum {
 
     MMMessageReadStatePreambleStart = 0,
     MMMessageReadStatePreambleUpdate,
-    MMMessageReadStateLength,
+    MMMessageReadStateSenderLength,
+    MMMessageReadStateSender,
+    MMMessageReadStateRecipientsLength,
+    MMMessageReadStateRecipients,
+    MMMessageReadStatePacketLength,
     MMMessageReadStatePacket,
     
 } MMMessageReadState;
@@ -38,13 +42,15 @@ typedef enum {
 
     MMMessageReadState _messageState;
     BOOL _raw;
-    uint32_t _packetLength;
+    uint32_t _readLength;
 }
 
 @property (nonatomic, strong) GCDAsyncSocket *asyncSocket;
 @property (nonatomic, strong) NSMutableSet *messageClasses;
 @property (nonatomic, strong) NSMutableData *preambleBuffer;
 @property (nonatomic, readwrite) NSTimeInterval averageRoundTripTime;
+@property (nonatomic, strong) NSString *sender;
+@property (nonatomic, strong) NSString *recipientList;
 
 @end
 
@@ -172,6 +178,9 @@ typedef enum {
 
 //            NSLog(@"preamble start, reading 1 byte");
 
+            self.sender = nil;
+            self.recipientList = nil;
+            
             [_preambleBuffer setLength:0];
 
             [_asyncSocket
@@ -192,7 +201,9 @@ typedef enum {
 
             break;
 
-        case MMMessageReadStateLength:
+        case MMMessageReadStateSenderLength:
+        case MMMessageReadStateRecipientsLength:
+        case MMMessageReadStatePacketLength:
 
 //            NSLog(@"length state, reading %d bytes", sizeof(uint32_t));
 
@@ -203,12 +214,14 @@ typedef enum {
 
             break;
 
+        case MMMessageReadStateSender:
+        case MMMessageReadStateRecipients:
         case MMMessageReadStatePacket:
 
-//            NSLog(@"packet state, reading %d bytes", _packetLength);
+//            NSLog(@"packet state, reading %d bytes", _readLength);
 
             [_asyncSocket
-             readDataToLength:_packetLength
+             readDataToLength:_readLength
              withTimeout:-1.0f
              tag:0];
 
@@ -246,7 +259,7 @@ typedef enum {
                 if (_raw || nonRaw) {
 
                     if (_preambleBuffer.length == PBRemoteMessage.messagePreamble.length) {
-                        messageState = MMMessageReadStateLength;
+                        messageState = MMMessageReadStateSenderLength;
                     }
                 }
             } else {
@@ -258,7 +271,31 @@ typedef enum {
             break;
         }
 
-        case MMMessageReadStateLength:
+        case MMMessageReadStateSenderLength:
+            if (_readLength > 0) {
+                messageState = MMMessageReadStateSender;
+            } else {
+                messageState = MMMessageReadStateRecipientsLength;
+            }
+            break;
+
+        case MMMessageReadStateSender:
+            messageState = MMMessageReadStateRecipientsLength;
+            break;
+
+        case MMMessageReadStateRecipientsLength:
+            if (_readLength > 0) {
+                messageState = MMMessageReadStateRecipients;
+            } else {
+                messageState = MMMessageReadStatePacketLength;
+            }
+            break;
+
+        case MMMessageReadStateRecipients:
+            messageState = MMMessageReadStatePacketLength;
+            break;
+
+        case MMMessageReadStatePacketLength:
             messageState = MMMessageReadStatePacket;
             break;
 
@@ -286,8 +323,18 @@ typedef enum {
                     [self readPreamble:data];
                     break;
 
-                case MMMessageReadStateLength:
-                    [self readPacketLength:data];
+                case MMMessageReadStateSenderLength:
+                case MMMessageReadStateRecipientsLength:
+                case MMMessageReadStatePacketLength:
+                    [self readDataLength:data];
+                    break;
+
+                case MMMessageReadStateSender:
+                    [self readSender:data];
+                    break;
+
+                case MMMessageReadStateRecipients:
+                    [self readRecipients:data];
                     break;
 
                 case MMMessageReadStatePacket:
@@ -308,31 +355,85 @@ typedef enum {
     [self readDataForNextMessageState];
 }
 
-- (void)readPacketLength:(NSData *)data {
+- (void)readDataLength:(NSData *)data {
 
     if (data.length == sizeof(uint32_t)) {
-        [data getBytes:&_packetLength length:sizeof(uint32_t)];
+        [data getBytes:&_readLength length:sizeof(uint32_t)];
         [self readDataForNextMessageState];
     } else {
         NSLog(@"length data not long enough: %d", data.length);
 
-        _packetLength = 0;
+        _readLength = 0;
+        [self readDataForMessageState:MMMessageReadStatePreambleStart];
+    }
+}
+
+- (void)readSender:(NSData *)data {
+
+    if (data.length == _readLength) {
+
+        if (_readLength > 0) {
+            self.sender = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        }
+        [self readDataForNextMessageState];
+
+    } else {
+        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
+
+        _readLength = 0;
+        [self readDataForMessageState:MMMessageReadStatePreambleStart];
+    }
+}
+
+- (void)readRecipients:(NSData *)data {
+
+    if (data.length == _readLength) {
+
+        if (_readLength > 0) {
+            self.recipientList = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        }
+        [self readDataForNextMessageState];
+
+    } else {
+        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
+
+        _readLength = 0;
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
     }
 }
 
 - (void)readPacket:(NSData *)data {
 
-    if (data.length == _packetLength) {
+    if (data.length == _readLength) {
 
         NSTimeInterval totalReadTime = [NSDate timeIntervalSinceReferenceDate] - _packetReadStartTime;
 
         if (totalReadTime < [PBRemoteMessageManager sharedInstance].maxReadTime) {
 
+            static NSCharacterSet *commaCharacterSet = nil;
+
+            if (commaCharacterSet == nil) {
+                commaCharacterSet = [NSCharacterSet characterSetWithCharactersInString:@","];
+            }
+
+            NSArray *recipients =
+            [_recipientList
+             componentsSeparatedByCharactersInSet:commaCharacterSet];
+
+            NSString *currentUsername =
+            [PBRemoteMessageManager sharedInstance].userIdentity.username;
+
+            BOOL peerMessage = [recipients containsObject:currentUsername];
+
             if (_raw) {
 
                 if (_globalDelegate != nil) {
-                    [_globalDelegate handleRawMessage:data];
+                    [_globalDelegate
+                     handleRawMessage:data
+                     sender:_sender
+                     recipients:recipients
+                     peerMessage:peerMessage];
+                    
                 } else {
                     NSLog(@"No global delegate to handle raw message.");
                 }
@@ -356,8 +457,13 @@ typedef enum {
                     NSDictionary *payload =
                     [packet objectForKey:kPBRemotePayloadKey];
                     
-                    [self handleMessage:messageID payload:payload];
-                    
+                    [self
+                     handleMessage:messageID
+                     sender:_sender
+                     recipients:recipients
+                     peerMessage:peerMessage
+                     payload:payload];
+
                 } else {
                     NSLog(@"empty packet: %@", data);
                 }
@@ -367,7 +473,7 @@ typedef enum {
         }
 
     } else {
-        NSLog(@"packet data not long enough: %d != %d", data.length, _packetLength);
+        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
     }
 
     [self readDataForMessageState:MMMessageReadStatePreambleStart];
@@ -384,13 +490,22 @@ typedef enum {
 	return 0.0;
 }
 
-- (void)handleMessage:(NSString *)messageID payload:(NSDictionary *)payload {
+- (void)handleMessage:(NSString *)messageID
+               sender:(NSString *)sender
+           recipients:(NSArray *)recipients
+          peerMessage:(BOOL)peerMessage
+              payload:(NSDictionary *)payload {
 
     for (Class clazz in _messageClasses) {
 
         PBRemoteMessage *message =
-        [[clazz alloc] initWithMessageID:messageID
-                                 payload:payload];
+        [[clazz alloc]
+         initWithMessageID:messageID
+         sender:_sender
+         recipients:recipients
+         peerMessage:peerMessage
+         payload:payload];
+
         if (message != nil) {
             [message consumeMessage];
             break;
