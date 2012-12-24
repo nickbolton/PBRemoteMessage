@@ -27,7 +27,7 @@
 + (void)sendRawMessage:(NSData *)data toRecipients:(NSArray *)recipients;
 
 - (id)initWithMessageID:(NSString *)messageID
-                 sender:(PBUserIdentity *)sender
+                 sender:(NSString *)sender
              recipients:(NSArray *)recipients
             peerMessage:(BOOL)peerMessage
                 payload:(NSDictionary *)payload;

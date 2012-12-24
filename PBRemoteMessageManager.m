@@ -597,9 +597,10 @@ NSString * const kPBClientIDKey = @"client-id";
 
         packet =
         [NSPropertyListSerialization
-         dataFromPropertyList:fullMessage
+         dataWithPropertyList:fullMessage
          format:NSPropertyListBinaryFormat_v1_0
-         errorDescription:&error];
+         options:NSPropertyListMutableContainers
+         error:&error];
 
         if (error != nil) {
             NSLog(@"Error: %@", error);
