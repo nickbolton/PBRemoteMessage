@@ -425,47 +425,49 @@ typedef enum {
 
             BOOL peerMessage = [recipients containsObject:currentUsername];
 
-            if (_raw) {
+            if (recipients.count == 0 || peerMessage) {
+                if (_raw) {
 
-                if (_globalDelegate != nil) {
-                    [_globalDelegate
-                     handleRawMessage:data
-                     sender:_sender
-                     recipients:recipients
-                     peerMessage:peerMessage];
-                    
-                } else {
-                    NSLog(@"No global delegate to handle raw message.");
-                }
+                    if (_globalDelegate != nil) {
+                        [_globalDelegate
+                         handleRawMessage:data
+                         sender:_sender
+                         recipients:recipients
+                         peerMessage:peerMessage];
 
-            } else {
-
-                NSDictionary *packet =
-                [NSPropertyListSerialization
-                 propertyListFromData:data
-                 mutabilityOption:NSPropertyListImmutable
-                 format:NULL
-                 errorDescription:NULL];
-
-//                NSLog(@"read packet: %@", packet);
-
-                if (packet != nil) {
-
-                    NSString *messageID =
-                    [packet objectForKey:kPBRemoteMessageIDKey];
-
-                    NSDictionary *payload =
-                    [packet objectForKey:kPBRemotePayloadKey];
-                    
-                    [self
-                     handleMessage:messageID
-                     sender:_sender
-                     recipients:recipients
-                     peerMessage:peerMessage
-                     payload:payload];
+                    } else {
+                        NSLog(@"No global delegate to handle raw message.");
+                    }
 
                 } else {
-                    NSLog(@"empty packet: %@", data);
+
+                    NSDictionary *packet =
+                    [NSPropertyListSerialization
+                     propertyListFromData:data
+                     mutabilityOption:NSPropertyListImmutable
+                     format:NULL
+                     errorDescription:NULL];
+
+                    NSLog(@"read packet: %@", packet);
+
+                    if (packet != nil) {
+
+                        NSString *messageID =
+                        [packet objectForKey:kPBRemoteMessageIDKey];
+
+                        NSDictionary *payload =
+                        [packet objectForKey:kPBRemotePayloadKey];
+
+                        [self
+                         handleMessage:messageID
+                         sender:_sender
+                         recipients:recipients
+                         peerMessage:peerMessage
+                         payload:payload];
+                        
+                    } else {
+                        NSLog(@"empty packet: %@", data);
+                    }
                 }
             }
         } else {
