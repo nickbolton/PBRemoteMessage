@@ -448,7 +448,7 @@ typedef enum {
                      format:NULL
                      errorDescription:NULL];
 
-                    NSLog(@"read packet: %@", packet);
+//                    NSLog(@"read packet: %@", packet);
 
                     if (packet != nil) {
 
