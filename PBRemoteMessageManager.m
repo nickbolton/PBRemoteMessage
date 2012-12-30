@@ -474,7 +474,9 @@ NSString * const kPBClientIDKey = @"client-id";
 
     if (socketAdded) {
 
-        [self identifySocket:newSocket];
+        if (self.userIdentity != nil) {
+            [self identifySocket:newSocket];
+        }
 
     } else {
         [newSocket disconnect];
