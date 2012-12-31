@@ -610,6 +610,18 @@ NSString * const kPBClientIDKey = @"client-id";
     }
 
     if (packet != nil) {
+
+        if (_appendCRLF) {
+
+            NSData *crlfData = [GCDAsyncSocket CRLFData];
+            
+            NSMutableData *packetCopy = [NSMutableData dataWithCapacity:packet.length + crlfData.length];
+            [packetCopy appendData:packet];
+            [packetCopy appendData:crlfData];
+
+            packet = packetCopy;
+        }
+        
         @synchronized (self) {
 
             // write preamble

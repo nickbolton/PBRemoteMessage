@@ -406,6 +406,10 @@ typedef enum {
 
     if (data.length == _readLength) {
 
+        if ([PBRemoteMessageManager sharedInstance].appendCRLF) {
+            data = [data subdataWithRange:NSMakeRange(0, data.length - [GCDAsyncSocket CRLFData].length)];
+        }
+
         NSTimeInterval totalReadTime = [NSDate timeIntervalSinceReferenceDate] - _packetReadStartTime;
 
         if (_raw == NO || totalReadTime < [PBRemoteMessageManager sharedInstance].maxReadTimeForRawMessages) {
