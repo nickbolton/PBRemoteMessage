@@ -801,15 +801,23 @@ NSString * const kPBClientIDKey = @"client-id";
 
 - (void)clientConnected:(PBRemoteMessagingClient *)client {
 
-//    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
-//
-//        PBRemoteClientInfo *clientInfo =
-//        [self clientInfoForClient:client];
-//
-//        if (clientInfo.netService.name.length > 0) {
-//            [_delegate clientConnected:clientInfo.netService.name];
-//        }
-//    }
+    if (self.userIdentity == nil) {
+
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:kPBRemoteMessageManagerActiveNotification
+         object:self
+         userInfo:nil];
+
+        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+
+            PBRemoteClientInfo *clientInfo =
+            [self clientInfoForClient:client];
+
+            if (clientInfo.netService.name.length > 0) {
+                [_delegate clientConnected:clientInfo.netService.name];
+            }
+        }
+    }
 }
 
 - (void)clientDisconnected:(PBRemoteMessagingClient *)client {

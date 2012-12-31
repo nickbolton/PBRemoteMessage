@@ -156,6 +156,7 @@ typedef enum {
 
     if (_connected == NO) {
         _connected = YES;
+        [_delegate clientConnected:self];
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
     }
 }
