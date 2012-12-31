@@ -408,7 +408,7 @@ typedef enum {
 
         NSTimeInterval totalReadTime = [NSDate timeIntervalSinceReferenceDate] - _packetReadStartTime;
 
-        if (totalReadTime < [PBRemoteMessageManager sharedInstance].maxReadTime) {
+        if (_raw == NO || totalReadTime < [PBRemoteMessageManager sharedInstance].maxReadTimeForRawMessages) {
 
             static NSCharacterSet *commaCharacterSet = nil;
 
@@ -471,7 +471,7 @@ typedef enum {
                 }
             }
         } else {
-            NSLog(@"packet dropped for exceeding max read time (%f > %f)", totalReadTime, [PBRemoteMessageManager sharedInstance].maxReadTime);
+            NSLog(@"packet dropped for exceeding max read time (%f > %f)", totalReadTime, [PBRemoteMessageManager sharedInstance].maxReadTimeForRawMessages);
         }
 
     } else {

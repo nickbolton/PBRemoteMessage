@@ -70,7 +70,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
     if (self != nil) {
 
-        _maxReadTime = MAXFLOAT;
+        _maxReadTimeForRawMessages = MAXFLOAT;
 
         self.clients = [NSMutableDictionary dictionary];
         self.registeredDevices = [NSMutableSet set];
