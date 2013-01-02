@@ -14,7 +14,6 @@
 #import "GCDAsyncSocket.h"
 #import "PBRemoteClientInfo.h"
 #import "NSString+GUID.h"
-#import "NSString+Utilities.h"
 #import "PBUserIdentity.h"
 
 #define READ_TIMEOUT 15.0

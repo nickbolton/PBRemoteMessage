@@ -15,7 +15,6 @@
 #import "NSString+GUID.h"
 #import "PBRemoteNotificationMessage.h"
 #import "PBUserIdentity.h"
-#import "NSString+Utilities.h"
 
 #define READ_TIMEOUT 15.0
 #define READ_TIMEOUT_EXTENSION 10.0
