@@ -24,6 +24,10 @@ NSString * const kPBRemoteMessageManagerActiveNotification =
 @"kPBRemoteMessageManagerActiveNotification";
 NSString * const kPBRemoteMessageManagerInactiveNotification =
 @"kPBRemoteMessageManagerInactiveNotification";
+NSString * const kPBRemoteMessageManagerUserConnectedNotification =
+@"kPBRemoteMessageManagerUserConnectedNotification";
+NSString * const kPBRemoteMessageManagerUserDisconnectedNotification =
+@"kPBRemoteMessageManagerUserDisconnectedNotification";
 NSString * const kPBPingNotification = @"kPBPingNotification";
 NSString * const kPBPongNotification = @"kPBPongNotification";
 NSString * const kPBClientIdentityRequestNotification = @"kPBClientIdentityRequestNotification";
@@ -439,6 +443,14 @@ NSString * const kPBClientIDKey = @"client-id";
                             NSLog(@"user connected: %@", userIdentity.username);
                             [_delegate userIdentityConnected:userIdentity];
                         }
+
+                        [[NSNotificationCenter defaultCenter]
+                         postNotificationName:kPBRemoteMessageManagerUserConnectedNotification
+                         object:self
+                         userInfo:
+                         @{
+                         kPBUserIdentityUsernameKey : userIdentity.username,
+                         }];
                     }
 
                     break;
@@ -743,17 +755,26 @@ NSString * const kPBClientIDKey = @"client-id";
 
         [_clients removeObjectForKey:netService.name];
 
-        if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
+        NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:netService.name];
 
-            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:netService.name];
+        PBUserIdentity *userIdentity =
+        [PBUserIdentity userIdentityWithID:objectID];
 
-            PBUserIdentity *userIdentity =
-            [PBUserIdentity userIdentityWithID:objectID];
+        if (userIdentity != nil) {
 
-            if (userIdentity != nil) {
-                NSLog(@"user disconnected: %@", userIdentity.username);
+            NSLog(@"user disconnected: %@", userIdentity.username);
+
+            if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
                 [_delegate userIdentityDisconnected:userIdentity];
             }
+
+            [[NSNotificationCenter defaultCenter]
+             postNotificationName:kPBRemoteMessageManagerUserDisconnectedNotification
+             object:self
+             userInfo:
+             @{
+             kPBUserIdentityUsernameKey : userIdentity.username,
+             }];
         }
 
         [_connectedIdentitiesMap removeObjectForKey:netService.name];
@@ -839,17 +860,26 @@ NSString * const kPBClientIDKey = @"client-id";
         if (keyToRemove != nil) {
             [_clients removeObjectForKey:keyToRemove];
 
-            if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
+            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:keyToRemove];
 
-                NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:keyToRemove];
+            PBUserIdentity *userIdentity =
+            [PBUserIdentity userIdentityWithID:objectID];
 
-                PBUserIdentity *userIdentity =
-                [PBUserIdentity userIdentityWithID:objectID];
+            if (userIdentity != nil) {
 
-                if (userIdentity != nil) {
-                    NSLog(@"user disconnected: %@", userIdentity.username);
+                NSLog(@"user disconnected: %@", userIdentity.username);
+
+                if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
                     [_delegate userIdentityDisconnected:userIdentity];
                 }
+
+                [[NSNotificationCenter defaultCenter]
+                 postNotificationName:kPBRemoteMessageManagerUserDisconnectedNotification
+                 object:self
+                 userInfo:
+                 @{
+                 kPBUserIdentityUsernameKey : userIdentity.username,
+                 }];
             }
 
             [_connectedIdentitiesMap removeObjectForKey:keyToRemove];

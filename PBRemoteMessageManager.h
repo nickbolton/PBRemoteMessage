@@ -30,6 +30,8 @@ extern NSString * const kPBRemoteMessageIDKey;
 extern NSString * const kPBRemotePayloadKey;
 extern NSString * const kPBRemoteMessageManagerActiveNotification;
 extern NSString * const kPBRemoteMessageManagerInactiveNotification;
+extern NSString * const kPBRemoteMessageManagerUserConnectedNotification;
+extern NSString * const kPBRemoteMessageManagerUserDisconnectedNotification;
 extern NSString * const kPBPingNotification;
 extern NSString * const kPBPongNotification;
 extern NSString * const kPBClientIdentityRequestNotification;
