@@ -12,15 +12,17 @@
 
 @interface PBUserIdentity : NSManagedObject
 
+@property (nonatomic, retain) NSString * identifier;
 @property (nonatomic, retain) NSString * username;
 @property (nonatomic, retain) NSString * fullName;
 @property (nonatomic, retain) NSString * email;
 
 + (PBUserIdentity *)userIdentityWithID:(NSManagedObjectID *)objectID;
-+ (PBUserIdentity *)userIdentityWithUsername:(NSString *)username;
-+ (PBUserIdentity *)createUserIdentityWithUsername:(NSString *)username
-                                          fullName:(NSString *)fullName
-                                             email:(NSString *)email;
++ (PBUserIdentity *)userIdentityWithIdentifier:(NSString *)identifier;
++ (PBUserIdentity *)createUserIdentityWithIdentifier:(NSString *)identifier
+                                            username:(NSString *)username
+                                            fullName:(NSString *)fullName
+                                               email:(NSString *)email;
 + (void)removeUserIdentityWithID:(NSManagedObjectID *)objectID;
 
 + (NSArray *)allUsers;

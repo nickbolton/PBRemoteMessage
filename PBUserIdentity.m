@@ -11,15 +11,16 @@
 
 @implementation PBUserIdentity
 
+@dynamic identifier;
 @dynamic username;
 @dynamic fullName;
 @dynamic email;
 
-+ (PBUserIdentity *)userIdentityWithUsername:(NSString *)username {
++ (PBUserIdentity *)userIdentityWithIdentifier:(NSString *)identifier {
 
     NSArray *results = nil;
 
-    if (username.length > 0) {
+    if (identifier.length > 0) {
         NSManagedObjectContext *context =
         [PBRemoteDataManager sharedInstance].managedObjectContext;
 
@@ -32,7 +33,7 @@
         [request setEntity:entity];
 
         request.predicate =
-        [NSPredicate predicateWithFormat:@"username = %@", username];
+        [NSPredicate predicateWithFormat:@"identifier = %@", identifier];
 
         results = [self executeRequest:request inContext:context];
     }
@@ -43,27 +44,28 @@
     return nil;
 }
 
-+ (PBUserIdentity *)createUserIdentityWithUsername:(NSString *)username
-                                          fullName:(NSString *)fullName
-                                             email:(NSString *)email {
++ (PBUserIdentity *)createUserIdentityWithIdentifier:(NSString *)identifier
+                                            username:(NSString *)username
+                                            fullName:(NSString *)fullName
+                                               email:(NSString *)email {
 
-    if (username.length > 0) {
-        NSManagedObjectContext *context =
-        [PBRemoteDataManager sharedInstance].managedObjectContext;
+    NSAssert(identifier.length > 0, @"identifier is required.");
+    NSAssert(username.length > 0, @"username is required.");
 
-        PBUserIdentity *userIdentity =
-        [NSEntityDescription
-         insertNewObjectForEntityForName:NSStringFromClass([PBUserIdentity class])
-         inManagedObjectContext:context];
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
 
-        userIdentity.username = username;
-        userIdentity.fullName = fullName;
-        userIdentity.email = email;
+    PBUserIdentity *userIdentity =
+    [NSEntityDescription
+     insertNewObjectForEntityForName:NSStringFromClass([PBUserIdentity class])
+     inManagedObjectContext:context];
 
-        return userIdentity;
-    }
+    userIdentity.identifier = identifier;
+    userIdentity.username = username;
+    userIdentity.fullName = fullName;
+    userIdentity.email = email;
 
-    return nil;
+    return userIdentity;
 }
 
 + (PBUserIdentity *)userIdentityWithID:(NSManagedObjectID *)objectID {

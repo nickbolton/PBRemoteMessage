@@ -3,9 +3,10 @@
     <entity name="PBUserIdentity" representedClassName="PBUserIdentity" syncable="YES">
         <attribute name="email" optional="YES" attributeType="String" syncable="YES"/>
         <attribute name="fullName" optional="YES" attributeType="String" syncable="YES"/>
+        <attribute name="identifier" attributeType="String" indexed="YES" syncable="YES"/>
         <attribute name="username" attributeType="String" indexed="YES" syncable="YES"/>
     </entity>
     <elements>
-        <element name="PBUserIdentity" positionX="160" positionY="192" width="128" height="90"/>
+        <element name="PBUserIdentity" positionX="160" positionY="192" width="128" height="105"/>
     </elements>
 </model>

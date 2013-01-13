@@ -32,6 +32,7 @@ NSString * const kPBPingNotification = @"kPBPingNotification";
 NSString * const kPBPongNotification = @"kPBPongNotification";
 NSString * const kPBClientIdentityRequestNotification = @"kPBClientIdentityRequestNotification";
 NSString * const kPBClientIdentityResponseNotification = @"kPBClientIdentityResponseNotification";
+NSString * const kPBUserIdentityIdentifierKey = @"userIdentity-identifier";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
 NSString * const kPBUserIdentityFullNameKey = @"userIdentity-fullName";
 NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
@@ -152,26 +153,29 @@ NSString * const kPBClientIDKey = @"client-id";
 
     if (_netService == nil) {
 
-        if ([_delegate respondsToSelector:@selector(userIdentity:fullName:email:)]) {
+        if ([_delegate respondsToSelector:@selector(userIdentity:username:fullName:email:)]) {
 
+            NSString *identifier = nil;
             NSString *username = nil;
             NSString *fullName = nil;
             NSString *email = nil;
 
             [_delegate
-             userIdentity:&username
+             userIdentity:&identifier
+             username:&username
              fullName:&fullName
              email:&email];
 
-            if (username.length > 0) {
+            if (identifier.length > 0) {
 
                 PBUserIdentity *userIdentity =
-                [PBUserIdentity userIdentityWithUsername:username];
+                [PBUserIdentity userIdentityWithIdentifier:identifier];
 
                 if (userIdentity == nil) {
                     userIdentity =
                     [PBUserIdentity
-                     createUserIdentityWithUsername:username
+                     createUserIdentityWithIdentifier:identifier
+                     username:username
                      fullName:fullName
                      email:email];
                 } else {
@@ -370,6 +374,7 @@ NSString * const kPBClientIDKey = @"client-id";
     if (self.userIdentity != nil) {
         [userInfo addEntriesFromDictionary:
         @{
+        kPBUserIdentityIdentifierKey : self.userIdentity.identifier,
         kPBUserIdentityUsernameKey : self.userIdentity.username,
         kPBUserIdentityFullNameKey : [NSString safeString:self.userIdentity.fullName],
         kPBUserIdentityEmailKey : [NSString safeString:self.userIdentity.email],
@@ -390,6 +395,7 @@ NSString * const kPBClientIDKey = @"client-id";
     NSString *serverID = [notification.userInfo objectForKey:kPBServerIDKey];
     NSString *clientID = [notification.userInfo objectForKey:kPBClientIDKey];
     NSString *clientSocketKey = [notification.userInfo objectForKey:kPBSocketKey];
+    NSString *identifier = [notification.userInfo objectForKey:kPBUserIdentityIdentifierKey];
     NSString *username = [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
     NSString *fullName = [notification.userInfo objectForKey:kPBUserIdentityFullNameKey];
     NSString *email = [notification.userInfo objectForKey:kPBUserIdentityEmailKey];
@@ -419,14 +425,15 @@ NSString * const kPBClientIDKey = @"client-id";
                         [_delegate clientConnected:clientID];
                     }
 
-                    if (username.length > 0) {
+                    if (identifier.length > 0) {
                         PBUserIdentity *userIdentity =
-                        [PBUserIdentity userIdentityWithUsername:username];
+                        [PBUserIdentity userIdentityWithIdentifier:identifier];
 
                         if (userIdentity == nil) {
                             userIdentity =
                             [PBUserIdentity
-                             createUserIdentityWithUsername:username
+                             createUserIdentityWithIdentifier:identifier
+                             username:username
                              fullName:fullName
                              email:email];
                         } else {
@@ -440,7 +447,7 @@ NSString * const kPBClientIDKey = @"client-id";
                         
                         if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
                             
-                            NSLog(@"user connected: %@", userIdentity.username);
+                            NSLog(@"user connected: %@", userIdentity.identifier);
                             [_delegate userIdentityConnected:userIdentity];
                         }
 
@@ -449,7 +456,7 @@ NSString * const kPBClientIDKey = @"client-id";
                          object:self
                          userInfo:
                          @{
-                         kPBUserIdentityUsernameKey : userIdentity.username,
+                         kPBUserIdentityIdentifierKey : userIdentity.identifier,
                          }];
                     }
 
@@ -642,7 +649,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
             // write sender
 
-            NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentity.username;
+            NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentity.identifier;
 
 //            NSLog(@"sender: %@", sender);
 
@@ -663,7 +670,7 @@ NSString * const kPBClientIDKey = @"client-id";
                     if (recipients.length > 0) {
                         [recipients appendString:@","];
                     }
-                    [recipients appendString:user.username];
+                    [recipients appendString:user.identifier];
                 }
             }
 
@@ -762,7 +769,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
         if (userIdentity != nil) {
 
-            NSLog(@"user disconnected: %@", userIdentity.username);
+            NSLog(@"user disconnected: %@", userIdentity.identifier);
 
             if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
                 [_delegate userIdentityDisconnected:userIdentity];
@@ -773,7 +780,7 @@ NSString * const kPBClientIDKey = @"client-id";
              object:self
              userInfo:
              @{
-             kPBUserIdentityUsernameKey : userIdentity.username,
+             kPBUserIdentityIdentifierKey : userIdentity.identifier,
              }];
         }
 
@@ -867,7 +874,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
             if (userIdentity != nil) {
 
-                NSLog(@"user disconnected: %@", userIdentity.username);
+                NSLog(@"user disconnected: %@", userIdentity.identifier);
 
                 if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
                     [_delegate userIdentityDisconnected:userIdentity];
@@ -878,7 +885,7 @@ NSString * const kPBClientIDKey = @"client-id";
                  object:self
                  userInfo:
                  @{
-                 kPBUserIdentityUsernameKey : userIdentity.username,
+                 kPBUserIdentityIdentifierKey : userIdentity.identifier,
                  }];
             }
 

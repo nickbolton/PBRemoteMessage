@@ -20,7 +20,7 @@
 @optional
 - (void)clientConnected:(NSString *)clientDeviceIdentifier;
 - (void)clientDisconnected:(NSString *)clientDeviceIdentifier;
-- (void)userIdentity:(NSString **)username fullName:(NSString **)fullName email:(NSString **)email;
+- (void)userIdentity:(NSString **)identitiy username:(NSString **)username fullName:(NSString **)fullName email:(NSString **)email;
 - (void)userIdentityConnected:(PBUserIdentity *)userIdentity;
 - (void)userIdentityDisconnected:(PBUserIdentity *)userIdentity;
 
@@ -36,7 +36,7 @@ extern NSString * const kPBPingNotification;
 extern NSString * const kPBPongNotification;
 extern NSString * const kPBClientIdentityRequestNotification;
 extern NSString * const kPBClientIdentityResponseNotification;
-extern NSString * const kPBUserIdentityUsernameKey;
+extern NSString * const kPBUserIdentityIdentifierKey;
 extern NSString * const kPBUserIdentityUsernameKey;
 extern NSString * const kPBUserIdentityFullNameKey;
 extern NSString * const kPBUserIdentityEmailKey;

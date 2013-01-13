@@ -424,10 +424,10 @@ typedef enum {
             [_recipientList
              componentsSeparatedByCharactersInSet:commaCharacterSet];
 
-            NSString *currentUsername =
-            [PBRemoteMessageManager sharedInstance].userIdentity.username;
+            NSString *currentUserIdentifier =
+            [PBRemoteMessageManager sharedInstance].userIdentity.identifier;
 
-            BOOL peerMessage = [recipients containsObject:currentUsername];
+            BOOL peerMessage = [recipients containsObject:currentUserIdentifier];
 
             if (recipients.count == 0 || peerMessage) {
                 if (_raw) {
