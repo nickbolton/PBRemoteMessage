@@ -26,6 +26,7 @@
 + (void)removeUserIdentityWithID:(NSManagedObjectID *)objectID;
 
 + (NSArray *)allUsers;
++ (NSString *)displayName:(PBUserIdentity *)userIdentity;
 
 - (void)save;
 

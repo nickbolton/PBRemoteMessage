@@ -163,4 +163,20 @@
     }];
 }
 
++ (NSString *)displayName:(PBUserIdentity *)userIdentity {
+
+    NSString *displayName;
+
+    if (userIdentity != nil) {
+        if (userIdentity.fullName.length > 0) {
+            displayName = userIdentity.fullName;
+        } else {
+            displayName = userIdentity.username;
+        }
+    } else {
+        displayName = PBLoc(@"Unknown User");
+    }
+    return displayName;
+}
+
 @end

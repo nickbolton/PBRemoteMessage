@@ -36,6 +36,7 @@ NSString * const kPBUserIdentityIdentifierKey = @"userIdentity-identifier";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
 NSString * const kPBUserIdentityFullNameKey = @"userIdentity-fullName";
 NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
+NSString * const kPBUserIdentityNewUserKey = @"userIdentity-new";
 NSString * const kPBSocketKey = @"socket";
 NSString * const kPBServerIDKey = @"server-id";
 NSString * const kPBClientIDKey = @"client-id";
@@ -429,7 +430,9 @@ NSString * const kPBClientIDKey = @"client-id";
                         PBUserIdentity *userIdentity =
                         [PBUserIdentity userIdentityWithIdentifier:identifier];
 
-                        if (userIdentity == nil) {
+                        BOOL newUser = userIdentity == nil;
+
+                        if (newUser) {
                             userIdentity =
                             [PBUserIdentity
                              createUserIdentityWithIdentifier:identifier
@@ -457,6 +460,7 @@ NSString * const kPBClientIDKey = @"client-id";
                          userInfo:
                          @{
                          kPBUserIdentityIdentifierKey : userIdentity.identifier,
+                         kPBUserIdentityNewUserKey : @(newUser),
                          }];
                     }
 
