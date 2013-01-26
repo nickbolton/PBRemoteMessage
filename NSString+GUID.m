@@ -19,6 +19,8 @@
 #define IFT_ETHER 0x6
 #endif
 
+NSString * const kPBRemoteApplicationInstanceIdKey = @"pbr-app-instance-id";
+
 @implementation NSString (GUID)
 
 - (NSString *) md5Digest {
@@ -75,6 +77,22 @@
 
 + (NSString *)deviceIdentifier {
     return [[NSString macAddress] md5Digest];
+}
+
++ (NSString *)applicationInstanceId {
+
+    NSString *instanceId =
+    [[NSUserDefaults standardUserDefaults]
+     stringForKey:kPBRemoteApplicationInstanceIdKey];
+
+    if (instanceId == nil) {
+        instanceId = [NSString timestampedGuid];
+        [[NSUserDefaults standardUserDefaults]
+         setObject:instanceId forKey:kPBRemoteApplicationInstanceIdKey];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+
+    return instanceId;
 }
 
 @end

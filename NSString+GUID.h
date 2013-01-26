@@ -13,5 +13,6 @@
 - (NSString *)md5Digest;
 + (NSString *)deviceIdentifier;
 + (NSString *)timestampedGuid;
++ (NSString *)applicationInstanceId;
 
 @end
