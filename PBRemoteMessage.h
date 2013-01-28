@@ -19,6 +19,7 @@
 @property (nonatomic, readonly) NSString *sender;
 @property (nonatomic, readonly) NSArray *recipients;
 @property (nonatomic, readonly) BOOL peerMessage;
+@property (nonatomic, readonly) NSDate *sendTimestamp;
 
 + (NSData *)messagePreamble;
 + (NSData *)rawMessagePreamble;
@@ -27,6 +28,7 @@
 + (void)sendRawMessage:(NSData *)data toRecipients:(NSArray *)recipients;
 
 - (id)initWithMessageID:(NSString *)messageID
+          sendTimestamp:(NSDate *)sendTimestamp
                  sender:(NSString *)sender
              recipients:(NSArray *)recipients
             peerMessage:(BOOL)peerMessage

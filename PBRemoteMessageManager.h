@@ -13,6 +13,7 @@
 @protocol PBRemoteMessageDelegate <NSObject>
 
 - (void)handleRawMessage:(NSData *)rawMessageData
+           sendTimestamp:(NSDate *)sendTimestamp
                   sender:(NSString *)sender
               recipients:(NSArray *)recipients
              peerMessage:(BOOL)peerMessage;

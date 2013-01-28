@@ -23,6 +23,8 @@ typedef enum {
 
     MMMessageReadStatePreambleStart = 0,
     MMMessageReadStatePreambleUpdate,
+    MMMessageReadStateSendTimestampInteger,
+    MMMessageReadStateSendTimestampDecimal,
     MMMessageReadStateSenderLength,
     MMMessageReadStateSender,
     MMMessageReadStateRecipientsLength,
@@ -39,6 +41,7 @@ typedef enum {
 
     NSTimeInterval _packetReadStartTime;
 
+    NSTimeInterval _sendTimestamp;
     MMMessageReadState _messageState;
     BOOL _raw;
     uint32_t _readLength;
@@ -180,6 +183,7 @@ typedef enum {
 
             self.sender = nil;
             self.recipientList = nil;
+            _sendTimestamp = 0.0f;
             
             [_preambleBuffer setLength:0];
 
@@ -196,6 +200,16 @@ typedef enum {
 
             [_asyncSocket
              readDataToLength:1
+             withTimeout:-1.0f
+             tag:0];
+
+            break;
+
+        case MMMessageReadStateSendTimestampInteger:
+        case MMMessageReadStateSendTimestampDecimal:
+
+            [_asyncSocket
+             readDataToLength:sizeof(uint32_t)
              withTimeout:-1.0f
              tag:0];
 
@@ -259,7 +273,7 @@ typedef enum {
                 if (_raw || nonRaw) {
 
                     if (_preambleBuffer.length == PBRemoteMessage.messagePreamble.length) {
-                        messageState = MMMessageReadStateSenderLength;
+                        messageState = MMMessageReadStateSendTimestampInteger;
                     }
                 }
             } else {
@@ -270,6 +284,16 @@ typedef enum {
             }
             break;
         }
+
+        case MMMessageReadStateSendTimestampInteger:
+
+            messageState = MMMessageReadStateSendTimestampDecimal;
+            break;
+            
+        case MMMessageReadStateSendTimestampDecimal:
+
+            messageState = MMMessageReadStateSenderLength;
+            break;
 
         case MMMessageReadStateSenderLength:
             if (_readLength > 0) {
@@ -323,6 +347,14 @@ typedef enum {
                     [self readPreamble:data];
                     break;
 
+                case MMMessageReadStateSendTimestampInteger:
+                    [self readSendTimestampInteger:data];
+                    break;
+
+                case MMMessageReadStateSendTimestampDecimal:
+                    [self readSendTimestampDecimal:data];
+                    break;
+                    
                 case MMMessageReadStateSenderLength:
                 case MMMessageReadStateRecipientsLength:
                 case MMMessageReadStatePacketLength:
@@ -355,13 +387,59 @@ typedef enum {
     [self readDataForNextMessageState];
 }
 
+- (void)readSendTimestampInteger:(NSData *)data {
+
+    if (data.length == sizeof(uint32_t)) {
+
+        uint32_t sendTimestampInteger;
+        [data getBytes:&sendTimestampInteger length:sizeof(uint32_t)];
+
+        NSLog(@"received message with send timestamp integer: %d", sendTimestampInteger);
+
+        _sendTimestamp = (NSTimeInterval)sendTimestampInteger;
+        
+        [self readDataForNextMessageState];
+    } else {
+        NSLog(@"read send timestamp integer data not the correct size: %d != %d",
+              data.length, sizeof(uint32_t));
+
+        _readLength = 0;
+        [self readDataForMessageState:MMMessageReadStatePreambleStart];
+    }
+}
+
+- (void)readSendTimestampDecimal:(NSData *)data {
+
+    if (data.length == sizeof(uint32_t)) {
+
+        uint32_t sendTimestampDecimal;
+        [data getBytes:&sendTimestampDecimal length:sizeof(uint32_t)];
+
+        NSLog(@"received message with send timestamp decimal: %d", sendTimestampDecimal);
+
+        NSTimeInterval timestampDecimal =
+        (NSTimeInterval)sendTimestampDecimal / 1000000.0f;
+
+        _sendTimestamp += timestampDecimal;
+
+        [self readDataForNextMessageState];
+    } else {
+        NSLog(@"read send timestamp decimal data not the correct size: %d != %d",
+              data.length, sizeof(uint32_t));
+
+        _readLength = 0;
+        [self readDataForMessageState:MMMessageReadStatePreambleStart];
+    }
+}
+
 - (void)readDataLength:(NSData *)data {
 
     if (data.length == sizeof(uint32_t)) {
         [data getBytes:&_readLength length:sizeof(uint32_t)];
         [self readDataForNextMessageState];
     } else {
-        NSLog(@"length data not long enough: %d", data.length);
+        NSLog(@"read data length data not the correct size: %d != %d",
+              data.length, sizeof(uint32_t));
 
         _readLength = 0;
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
@@ -378,7 +456,8 @@ typedef enum {
         [self readDataForNextMessageState];
 
     } else {
-        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
+        NSLog(@"read sender data not the correct size: %d != %d",
+              data.length, _readLength);
 
         _readLength = 0;
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
@@ -395,7 +474,8 @@ typedef enum {
         [self readDataForNextMessageState];
 
     } else {
-        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
+        NSLog(@"read recipients data not the correct size: %d != %d",
+              data.length, _readLength);
 
         _readLength = 0;
         [self readDataForMessageState:MMMessageReadStatePreambleStart];
@@ -429,12 +509,16 @@ typedef enum {
 
             BOOL peerMessage = [recipients containsObject:currentUserIdentifier];
 
+            NSDate *sendTimestamp =
+            [NSDate dateWithTimeIntervalSinceReferenceDate:_sendTimestamp];
+
             if (recipients.count == 0 || peerMessage) {
                 if (_raw) {
 
                     if (_globalDelegate != nil) {
                         [_globalDelegate
                          handleRawMessage:data
+                         sendTimestamp:sendTimestamp
                          sender:_sender
                          recipients:recipients
                          peerMessage:peerMessage];
@@ -464,6 +548,7 @@ typedef enum {
 
                         [self
                          handleMessage:messageID
+                         sendTimestamp:sendTimestamp
                          sender:_sender
                          recipients:recipients
                          peerMessage:peerMessage
@@ -479,7 +564,7 @@ typedef enum {
         }
 
     } else {
-        NSLog(@"packet data not long enough: %d != %d", data.length, _readLength);
+        NSLog(@"packet data not the correct size: %d != %d", data.length, _readLength);
     }
 
     [self readDataForMessageState:MMMessageReadStatePreambleStart];
@@ -497,6 +582,7 @@ typedef enum {
 }
 
 - (void)handleMessage:(NSString *)messageID
+        sendTimestamp:(NSDate *)sendTimestamp
                sender:(NSString *)sender
            recipients:(NSArray *)recipients
           peerMessage:(BOOL)peerMessage
@@ -507,6 +593,7 @@ typedef enum {
         PBRemoteMessage *message =
         [[clazz alloc]
          initWithMessageID:messageID
+         sendTimestamp:sendTimestamp
          sender:_sender
          recipients:recipients
          peerMessage:peerMessage

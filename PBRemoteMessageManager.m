@@ -651,6 +651,24 @@ NSString * const kPBClientIDKey = @"client-id";
             NSData *preamble = raw ? PBRemoteMessage.rawMessagePreamble : PBRemoteMessage.messagePreamble;
             [socket writeData:preamble withTimeout:-1.0f tag:0];
 
+            // write send timestamp
+
+            NSTimeInterval timestamp = [NSDate timeIntervalSinceReferenceDate];
+            NSLog(@"sending message with timestamp: %f", timestamp);
+            uint32_t integerPortion = floor(timestamp);
+            uint32_t decimalPortion = floor((timestamp - integerPortion) * 1000000);
+
+            NSLog(@"sending message with integerPortion: %d", integerPortion);
+            NSLog(@"sending message with decimalPortion: %d", decimalPortion);
+
+            NSData *sendTimestampIntegerData =
+            [NSData dataWithBytes:&integerPortion length:sizeof(uint32_t)];
+            NSData *sendTimestampDecimalData =
+            [NSData dataWithBytes:&decimalPortion length:sizeof(uint32_t)];
+
+            [socket writeData:sendTimestampIntegerData withTimeout:-1.0f tag:0];
+            [socket writeData:sendTimestampDecimalData withTimeout:-1.0f tag:0];
+
             // write sender
 
             NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentity.identifier;

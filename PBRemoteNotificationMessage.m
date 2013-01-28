@@ -71,6 +71,7 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
 
     self = [self
             initWithMessageID:kPBRemoteNotificationMessageID
+            sendTimestamp:nil
             sender:nil
             recipients:nil
             peerMessage:NO
@@ -80,6 +81,7 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
 }
 
 - (id)initWithMessageID:(NSString *)messageID
+          sendTimestamp:(NSDate *)sendTimestamp
                  sender:(NSString *)sender
              recipients:(NSArray *)recipients
             peerMessage:(BOOL)peerMessage
@@ -89,6 +91,7 @@ NSString * const kPBRemoteUserInfoKey = @"user-info";
 
         self = [super
                 initWithMessageID:kPBRemoteNotificationMessageID
+                sendTimestamp:sendTimestamp
                 sender:sender
                 recipients:recipients
                 peerMessage:peerMessage

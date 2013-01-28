@@ -17,6 +17,7 @@
 @property (nonatomic, readwrite) NSString *sender;
 @property (nonatomic, readwrite) NSArray *recipients;
 @property (nonatomic, readwrite) BOOL peerMessage;
+@property (nonatomic, readwrite) NSDate *sendTimestamp;
 
 @end
 
@@ -24,6 +25,7 @@
 
 
 - (id)initWithMessageID:(NSString *)messageID
+          sendTimestamp:(NSDate *)sendTimestamp
                  sender:(NSString *)sender
              recipients:(NSArray *)recipients
             peerMessage:(BOOL)peerMessage
@@ -33,6 +35,7 @@
 
     if (self != nil) {
         self.messageID = messageID;
+        self.sendTimestamp = sendTimestamp;
         self.payload = payload;
         self.sender = sender;
         self.peerMessage = peerMessage;
