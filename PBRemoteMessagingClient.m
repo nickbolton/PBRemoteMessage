@@ -12,7 +12,7 @@
 #import <objc/runtime.h>
 #import "PBRemoteNotificationMessage.h"
 #import "GCDAsyncSocket.h"
-#import "NSString+GUID.h"
+#import "NSString+PBFoundation.h"
 #import "PBRemoteNotificationMessage.h"
 #import "PBUserIdentity.h"
 
