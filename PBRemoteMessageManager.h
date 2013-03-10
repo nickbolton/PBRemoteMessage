@@ -33,6 +33,7 @@ extern NSString * const kPBRemoteMessageManagerActiveNotification;
 extern NSString * const kPBRemoteMessageManagerInactiveNotification;
 extern NSString * const kPBRemoteMessageManagerUserConnectedNotification;
 extern NSString * const kPBRemoteMessageManagerUserDisconnectedNotification;
+extern NSString * const kPBRemoteMessageManagerPairingRequestedNotification;
 extern NSString * const kPBPingNotification;
 extern NSString * const kPBPongNotification;
 extern NSString * const kPBClientIdentityRequestNotification;
@@ -47,7 +48,6 @@ extern NSString * const kPBUserIdentityNewUserKey;
 
 @property (nonatomic) NSInteger maxClients;
 @property (nonatomic, weak) id <PBRemoteMessageDelegate> delegate;
-@property (nonatomic) BOOL onlyConnectToRegisteredDevices;
 @property (nonatomic, strong) NSString *deviceIdentifier;
 @property (nonatomic, readonly) Reachability *reachability;
 @property (nonatomic, readonly) PBUserIdentity *userIdentity;
@@ -62,11 +62,14 @@ extern NSString * const kPBUserIdentityNewUserKey;
 - (void)sendMessage:(PBRemoteMessage *)message
        toRecipients:(NSArray *)recipients;
 - (NSString *)serviceType;
-- (void)registeredDevice:(NSString *)deviceIdentifier;
-- (void)unregisterDevice:(NSString *)deviceIdentifier;
 - (BOOL)isConnectedToClient:(NSString *)clientIdentifier;
 - (BOOL)hasConnections;
 - (NSTimeInterval)averageClientRoundTripTime;
 - (NSArray *)connectedIdentities;
+- (void)pair:(PBUserIdentity *)userIdentity
+  completion:(void(^)(BOOL paired))completionBlock;
+- (void)unpair:(PBUserIdentity *)userIdentity;
+- (void)acceptPairing:(PBUserIdentity *)userIdentity;
+- (void)denyPairing:(PBUserIdentity *)userIdentity;
 
 @end

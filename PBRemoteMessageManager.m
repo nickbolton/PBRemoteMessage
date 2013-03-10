@@ -32,6 +32,11 @@ NSString * const kPBPingNotification = @"kPBPingNotification";
 NSString * const kPBPongNotification = @"kPBPongNotification";
 NSString * const kPBClientIdentityRequestNotification = @"kPBClientIdentityRequestNotification";
 NSString * const kPBClientIdentityResponseNotification = @"kPBClientIdentityResponseNotification";
+NSString * const kPBPairingRequestNotification = @"kPBPairingRequestNotification";
+NSString * const kPBUnpairingRequestNotification = @"kPBUnpairingRequestNotification";
+NSString * const kPBPairingAcceptedNotification = @"kPBPairingAcceptedNotification";
+NSString * const kPBPairingDeniedNotification = @"kPBPairingDeniedNotification";
+NSString * const kPBRemoteMessageManagerPairingRequestedNotification = @"kPBRemoteMessageManagerPairingRequestedNotification";
 NSString * const kPBUserIdentityIdentifierKey = @"userIdentity-identifier";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
 NSString * const kPBUserIdentityFullNameKey = @"userIdentity-fullName";
@@ -46,6 +51,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
     dispatch_queue_t _socketQueue;
     BOOL _starting;
+    void (^_pairingCompletionBlock)(BOOL paired);
 }
 
 @property (nonatomic, strong) NSNetService *netService;
@@ -59,7 +65,6 @@ NSString * const kPBClientIDKey = @"client-id";
 @property (nonatomic, strong) NSMutableDictionary *clients;
 @property (nonatomic, strong) NSMutableDictionary *clientSocketMap;
 
-@property (nonatomic, strong) NSMutableSet *registeredDevices;
 @property (nonatomic, strong) NSManagedObjectID *userIdentityObjectID;
 
 @property (nonatomic, strong) NSMutableDictionary *connectedIdentitiesMap;
@@ -78,7 +83,6 @@ NSString * const kPBClientIDKey = @"client-id";
         _maxReadTimeForRawMessages = MAXFLOAT;
 
         self.clients = [NSMutableDictionary dictionary];
-        self.registeredDevices = [NSMutableSet set];
         self.connectedIdentitiesMap = [NSMutableDictionary dictionary];
         self.clientSocketMap = [NSMutableDictionary dictionary];
         self.socketIdentificationMap = [NSMutableDictionary dictionary];
@@ -105,6 +109,30 @@ NSString * const kPBClientIDKey = @"client-id";
          addObserver:self
          selector:@selector(handleIdentificationResponse:)
          name:kPBClientIdentityResponseNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingRequest:)
+         name:kPBPairingRequestNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(unpairingRequest:)
+         name:kPBUnpairingRequestNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingAccepted:)
+         name:kPBPairingAcceptedNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingDenied:)
+         name:kPBPairingDeniedNotification
          object:nil];
 
 #if TARGET_OS_IPHONE
@@ -137,15 +165,6 @@ NSString * const kPBClientIDKey = @"client-id";
     return _clients.count > 0;
 }
 
-- (void)registeredDevice:(NSString *)deviceIdentifier {
-    [_registeredDevices addObject:deviceIdentifier];
-    [self restartServiceBrowser];
-}
-
-- (void)unregisterDevice:(NSString *)deviceIdentifier {
-    [_registeredDevices removeObject:deviceIdentifier];
-}
-
 - (NSString *)serviceType {
     return [NSString stringWithFormat:@"_%@._tcp.", _serviceName];
 }
@@ -153,6 +172,14 @@ NSString * const kPBClientIDKey = @"client-id";
 - (void)startWithServiceName:(NSString *)serviceName {
 
     if (_netService == nil) {
+
+        PBUserIdentity *userIdentity = nil;
+
+        for (userIdentity in [PBUserIdentity MR_findAll]) {
+            userIdentity.connected = [NSNumber numberWithBool:NO];
+        }
+
+        [userIdentity save];
 
         if ([_delegate respondsToSelector:@selector(userIdentity:username:fullName:email:)]) {
 
@@ -285,6 +312,22 @@ NSString * const kPBClientIDKey = @"client-id";
     return result;
 }
 
+- (PBUserIdentity *)userIdentityForSocket:(GCDAsyncSocket *)socket {
+
+    for (NSString *deviceID in _connectedIdentitiesMap) {
+
+        GCDAsyncSocket *connectedSocket = [_clientSocketMap objectForKey:deviceID];
+        if (socket == connectedSocket) {
+            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
+            if (objectID != nil) {
+                return [PBUserIdentity userIdentityWithID:objectID];
+            }
+        }
+    }
+
+    return nil;
+}
+
 - (GCDAsyncSocket *)socketForUserIdentity:(PBUserIdentity *)userIdentity {
 
     NSString *clientID = nil;
@@ -365,6 +408,71 @@ NSString * const kPBClientIDKey = @"client-id";
     return avgTime / (NSTimeInterval)count;
 }
 
+- (void)pairingRequest:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    PBRemoteNotificationMessage *message = notification.object;
+
+    PBUserIdentity *sender =
+    [PBUserIdentity userIdentityWithIdentifier:message.sender];
+
+    [[NSNotificationCenter defaultCenter]
+     postNotificationName:kPBRemoteMessageManagerPairingRequestedNotification
+     object:sender
+     userInfo:nil];
+}
+
+- (void)unpairingRequest:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    PBRemoteNotificationMessage *message = notification.object;
+
+    PBUserIdentity *sender =
+    [PBUserIdentity userIdentityWithIdentifier:message.sender];
+    sender.paired = [NSNumber numberWithBool:NO];
+    [sender save];
+}
+
+- (void)pairingAccepted:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    @synchronized (self) {
+
+        PBRemoteNotificationMessage *message = notification.object;
+
+        PBUserIdentity *userIdentity =
+        [PBUserIdentity userIdentityWithIdentifier:message.sender];
+
+        userIdentity.paired = [NSNumber numberWithBool:YES];
+        [userIdentity save];
+
+        if (_pairingCompletionBlock != nil) {
+            _pairingCompletionBlock(YES);
+            _pairingCompletionBlock = nil;
+        }
+    }
+}
+
+- (void)pairingDenied:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    @synchronized (self) {
+
+        PBRemoteNotificationMessage *message = notification.object;
+
+        PBUserIdentity *userIdentity =
+        [PBUserIdentity userIdentityWithIdentifier:message.sender];
+
+        userIdentity.paired = [NSNumber numberWithBool:NO];
+        [userIdentity save];
+
+        if (_pairingCompletionBlock != nil) {
+            _pairingCompletionBlock(NO);
+            _pairingCompletionBlock = nil;
+        }
+    }
+}
+
 - (void)handleIdentificationRequest:(NSNotification *)notification {
 
     NSLog(@"received identity request...");
@@ -443,6 +551,8 @@ NSString * const kPBClientIDKey = @"client-id";
                             userIdentity.fullName = fullName;
                             userIdentity.email = email;
                         }
+
+                        userIdentity.connected = [NSNumber numberWithBool:YES];
 
                         [userIdentity save];
 
@@ -556,9 +666,37 @@ NSString * const kPBClientIDKey = @"client-id";
     }
 }
 
+- (void)doUserDisconnected:(PBUserIdentity *)userIdentity {
+
+    userIdentity.connected = [NSNumber numberWithBool:NO];
+
+    [userIdentity save];
+
+    if (userIdentity != nil) {
+
+        NSLog(@"user disconnected: %@", userIdentity.identifier);
+
+        if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
+            [_delegate userIdentityDisconnected:userIdentity];
+        }
+
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:kPBRemoteMessageManagerUserDisconnectedNotification
+         object:self
+         userInfo:
+         @{
+         kPBUserIdentityIdentifierKey : userIdentity.identifier,
+         }];
+    }
+}
+
 - (void)socketDidDisconnect:(GCDAsyncSocket *)sock withError:(NSError *)err {
 	if (sock != _listenSocket) {
         NSLog(@"Client Disconnected");
+
+        PBUserIdentity *userIdentity = [self userIdentityForSocket:sock];
+
+        [self doUserDisconnected:userIdentity];
 
         [sock disconnect];
         
@@ -589,8 +727,18 @@ NSString * const kPBClientIDKey = @"client-id";
 - (void)sendMessage:(PBRemoteMessage *)message
        toRecipients:(NSArray *)recipients {
 
-    for (GCDAsyncSocket *socket in _connectedSockets) {
-        [self sendMessage:message recipients:recipients socket:socket];
+    if (recipients.count == 0) {
+        [self sendMessage:message];
+    } else {
+
+        for (PBUserIdentity *userIdentity in recipients) {
+
+            GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
+
+            if ([_connectedSockets containsObject:socket]) {
+                [self sendMessage:message recipients:recipients socket:socket];
+            }
+        }
     }
 }
 
@@ -734,6 +882,65 @@ NSString * const kPBClientIDKey = @"client-id";
     return nil;
 }
 
+- (BOOL)isPairedWithDeviceIdentifier:(NSString *)deviceIdentifier {
+
+    NSArray *pairedIdentities =
+    [PBUserIdentity userIdentitiesWithPairing:YES];
+
+    for (PBUserIdentity *userIdentity in pairedIdentities) {
+        if ([userIdentity.identifier isEqualToString:deviceIdentifier]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+- (void)pair:(PBUserIdentity *)userIdentity completion:(void(^)(BOOL paired))completionBlock {
+
+    if (_pairingCompletionBlock == nil && [userIdentity.identifier isEqualToString:self.deviceIdentifier] == NO) {
+        _pairingCompletionBlock = completionBlock;
+
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingRequestNotification
+         toRecipients:@[userIdentity]];
+
+        NSTimeInterval delayInSeconds = 20.0f;
+        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+
+            @synchronized (self) {
+                if (_pairingCompletionBlock != nil) {
+                    _pairingCompletionBlock(NO);
+                    _pairingCompletionBlock = nil;
+                }
+            }
+        });
+    }
+}
+
+- (void)unpair:(PBUserIdentity *)userIdentity {
+
+    userIdentity.paired = [NSNumber numberWithBool:NO];
+    [userIdentity save];
+
+    [PBRemoteNotificationMessage
+     sendNotification:kPBUnpairingRequestNotification
+     toRecipients:@[userIdentity]];
+}
+
+- (void)acceptPairing:(PBUserIdentity *)userIdentity {
+    [PBRemoteNotificationMessage
+     sendNotification:kPBPairingAcceptedNotification
+     toRecipients:@[userIdentity]];
+}
+
+- (void)denyPairing:(PBUserIdentity *)userIdentity {
+    [PBRemoteNotificationMessage
+     sendNotification:kPBPairingDeniedNotification
+     toRecipients:@[userIdentity]];
+}
+
 #pragma mark - NSNetBrowserDelegate Conformance
 
 - (void)netServiceBrowser:(NSNetServiceBrowser *)sender didNotSearch:(NSDictionary *)errorInfo {
@@ -754,12 +961,13 @@ NSString * const kPBClientIDKey = @"client-id";
         if (clientInfo != nil) {
             [self cleanupClient:clientInfo];
         } else {
+
+            NSArray *pairedIdentities =
+            [PBUserIdentity userIdentitiesWithPairing:YES];
+            
             if (_maxClients < 0 || _maxClients < _clients.count) {
-                if (_onlyConnectToRegisteredDevices == NO ||
-                    [_registeredDevices containsObject:netService.name]) {
-                    clientInfo = [[PBRemoteClientInfo alloc] init];
-                    [_clients setObject:clientInfo forKey:netService.name];
-                }
+                clientInfo = [[PBRemoteClientInfo alloc] init];
+                [_clients setObject:clientInfo forKey:netService.name];
             }
         }
 
@@ -789,22 +997,7 @@ NSString * const kPBClientIDKey = @"client-id";
         PBUserIdentity *userIdentity =
         [PBUserIdentity userIdentityWithID:objectID];
 
-        if (userIdentity != nil) {
-
-            NSLog(@"user disconnected: %@", userIdentity.identifier);
-
-            if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
-                [_delegate userIdentityDisconnected:userIdentity];
-            }
-
-            [[NSNotificationCenter defaultCenter]
-             postNotificationName:kPBRemoteMessageManagerUserDisconnectedNotification
-             object:self
-             userInfo:
-             @{
-             kPBUserIdentityIdentifierKey : userIdentity.identifier,
-             }];
-        }
+        [self doUserDisconnected:userIdentity];
 
         [_connectedIdentitiesMap removeObjectForKey:netService.name];
     }
@@ -857,10 +1050,17 @@ NSString * const kPBClientIDKey = @"client-id";
          object:self
          userInfo:nil];
 
-        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+        PBRemoteClientInfo *clientInfo =
+        [self clientInfoForClient:client];
 
-            PBRemoteClientInfo *clientInfo =
-            [self clientInfoForClient:client];
+        PBUserIdentity *clientIdentity =
+        [PBUserIdentity userIdentityWithIdentifier:clientInfo.netService.name];
+
+        clientIdentity.connected = [NSNumber numberWithBool:YES];
+
+        [clientIdentity save];
+
+        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
 
             if (clientInfo.netService.name.length > 0) {
                 [_delegate clientConnected:clientInfo.netService.name];
@@ -873,6 +1073,12 @@ NSString * const kPBClientIDKey = @"client-id";
 
     PBRemoteClientInfo *clientInfo =
     [self clientInfoForClient:client];
+
+    PBUserIdentity *clientIdentity =
+    [PBUserIdentity userIdentityWithIdentifier:clientInfo.netService.name];
+
+    clientIdentity.connected = [NSNumber numberWithBool:NO];
+    [clientIdentity save];
 
     if (clientInfo != nil) {
 
@@ -894,22 +1100,7 @@ NSString * const kPBClientIDKey = @"client-id";
             PBUserIdentity *userIdentity =
             [PBUserIdentity userIdentityWithID:objectID];
 
-            if (userIdentity != nil) {
-
-                NSLog(@"user disconnected: %@", userIdentity.identifier);
-
-                if ([_delegate respondsToSelector:@selector(userIdentityDisconnected:)]) {
-                    [_delegate userIdentityDisconnected:userIdentity];
-                }
-
-                [[NSNotificationCenter defaultCenter]
-                 postNotificationName:kPBRemoteMessageManagerUserDisconnectedNotification
-                 object:self
-                 userInfo:
-                 @{
-                 kPBUserIdentityIdentifierKey : userIdentity.identifier,
-                 }];
-            }
+            [self doUserDisconnected:userIdentity];
 
             [_connectedIdentitiesMap removeObjectForKey:keyToRemove];
         }

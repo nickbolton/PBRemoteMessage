@@ -8,6 +8,10 @@
 
 #import "PBUserIdentity.h"
 #import "PBRemoteDataManager.h"
+#import "PBRemoteMessageManager.h"
+
+@interface PBUserIdentity()
+@end
 
 @implementation PBUserIdentity
 
@@ -15,6 +19,36 @@
 @dynamic username;
 @dynamic fullName;
 @dynamic email;
+@dynamic paired;
+@dynamic connected;
+
++ (NSArray *)userIdentitiesWithPairing:(BOOL)paired {
+
+    NSSortDescriptor *sortDescriptor =
+    [NSSortDescriptor sortDescriptorWithKey:@"username" ascending:YES];
+
+    NSArray *results = nil;
+
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    NSEntityDescription *entity =
+    [NSEntityDescription
+     entityForName:NSStringFromClass([self class])
+     inManagedObjectContext:context];
+
+    NSFetchRequest *request = [[NSFetchRequest alloc] init];
+    [request setEntity:entity];
+
+    request.predicate =
+    [NSPredicate predicateWithFormat:@"paired = %d", paired];
+
+    request.sortDescriptors = @[sortDescriptor];
+
+    results = [self executeRequest:request inContext:context];
+
+    return results;
+}
 
 + (PBUserIdentity *)userIdentityWithIdentifier:(NSString *)identifier {
 
@@ -106,6 +140,68 @@
     return [self executeRequest:request inContext:context];
 }
 
++ (NSArray *)allUsersSortedBy:(NSString *)sortKey filterSelf:(BOOL)filterSelf {
+    return
+    [self
+     allUsersSortedBy:sortKey
+     filterSelf:filterSelf
+     filterOffline:NO
+     includePaired:YES];
+}
+
++ (NSArray *)allUsersSortedBy:(NSString *)sortKey
+                   filterSelf:(BOOL)filterSelf
+                filterOffline:(BOOL)filterOffline
+                includePaired:(BOOL)includePaired {
+
+    NSSortDescriptor *sortDescriptor =
+    [NSSortDescriptor sortDescriptorWithKey:sortKey ascending:YES];
+
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    NSEntityDescription *entity =
+    [NSEntityDescription
+     entityForName:NSStringFromClass([self class])
+     inManagedObjectContext:context];
+
+    NSFetchRequest *request = [[NSFetchRequest alloc] init];
+    [request setEntity:entity];
+
+    request.sortDescriptors = @[sortDescriptor];
+
+    if (filterSelf) {
+        request.predicate =
+        [NSPredicate
+         predicateWithFormat:@"self.identifier != %@",
+         [PBRemoteMessageManager sharedInstance].deviceIdentifier];
+    }
+
+    NSArray * results = [self executeRequest:request inContext:context];
+
+    if (filterOffline) {
+        NSMutableArray *mutableResults = [results mutableCopy];
+
+        [mutableResults
+         enumerateObjectsWithOptions:NSEnumerationReverse
+         usingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+
+             PBUserIdentity *userIdentity = obj;
+
+             userIdentity =
+             [PBUserIdentity userIdentityWithID:userIdentity.objectID];
+
+             if (userIdentity.connected.boolValue == NO && userIdentity.paired.boolValue == NO) {
+                 [mutableResults removeObjectAtIndex:idx];
+             }
+         }];
+
+        results = mutableResults;
+    }
+
+    return results;
+}
+
 + (NSArray *)executeRequest:(NSFetchRequest *)request
              inContext:(NSManagedObjectContext *)context {
 
@@ -161,6 +257,14 @@
     [context performBlock:^{
         [context save:NULL];
     }];
+}
+
+- (void)pair:(void(^)(BOOL paired))completionBlock {
+    [[PBRemoteMessageManager sharedInstance] pair:self completion:completionBlock];
+}
+
+- (void)unpair {
+    [[PBRemoteMessageManager sharedInstance] unpair:self];
 }
 
 + (NSString *)displayName:(PBUserIdentity *)userIdentity {
