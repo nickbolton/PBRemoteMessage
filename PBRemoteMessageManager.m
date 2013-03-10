@@ -32,6 +32,9 @@ NSString * const kPBPingNotification = @"kPBPingNotification";
 NSString * const kPBPongNotification = @"kPBPongNotification";
 NSString * const kPBClientIdentityRequestNotification = @"kPBClientIdentityRequestNotification";
 NSString * const kPBClientIdentityResponseNotification = @"kPBClientIdentityResponseNotification";
+NSString * const kPBPairingStatusRequestNotification = @"kPBPairingStatusRequestNotification";
+NSString * const kPBPairingStatusResponseNotification = @"kPBPairingStatusResponseNotification";
+NSString * const kPBPairingUpdateNotification = @"kPBPairingUpdateNotification";
 NSString * const kPBPairingRequestNotification = @"kPBPairingRequestNotification";
 NSString * const kPBUnpairingRequestNotification = @"kPBUnpairingRequestNotification";
 NSString * const kPBPairingAcceptedNotification = @"kPBPairingAcceptedNotification";
@@ -41,10 +44,13 @@ NSString * const kPBUserIdentityIdentifierKey = @"userIdentity-identifier";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
 NSString * const kPBUserIdentityFullNameKey = @"userIdentity-fullName";
 NSString * const kPBUserIdentityEmailKey = @"userIdentity-email";
+NSString * const kPBUserIdentityTypeKey = @"userIdentity-type";
 NSString * const kPBUserIdentityNewUserKey = @"userIdentity-new";
 NSString * const kPBSocketKey = @"socket";
 NSString * const kPBServerIDKey = @"server-id";
 NSString * const kPBClientIDKey = @"client-id";
+NSString * const kPBPairedIdentitiesKey = @"paired-identities";
+NSString * const kPBPairedStatusKey = @"is-paired";
 
 @interface PBRemoteMessageManager()
 <NSNetServiceBrowserDelegate, NSNetServiceDelegate, PBRemoteMessagingClientDelegate>  {
@@ -57,6 +63,7 @@ NSString * const kPBClientIDKey = @"client-id";
 @property (nonatomic, strong) NSNetService *netService;
 @property (nonatomic, strong) GCDAsyncSocket *listenSocket;
 @property (nonatomic, strong) NSMutableArray *connectedSockets;
+@property (nonatomic, strong) NSArray *pairedIdentities;
 
 @property (nonatomic, readwrite) Reachability *reachability;
 @property (nonatomic, strong) NSString *serviceName;
@@ -66,6 +73,7 @@ NSString * const kPBClientIDKey = @"client-id";
 @property (nonatomic, strong) NSMutableDictionary *clientSocketMap;
 
 @property (nonatomic, strong) NSManagedObjectID *userIdentityObjectID;
+@property (nonatomic, readwrite) NSString *userIdentifier;
 
 @property (nonatomic, strong) NSMutableDictionary *connectedIdentitiesMap;
 
@@ -135,6 +143,24 @@ NSString * const kPBClientIDKey = @"client-id";
          name:kPBPairingDeniedNotification
          object:nil];
 
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingUpdate:)
+         name:kPBPairingUpdateNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingStatusRequest:)
+         name:kPBPairingStatusRequestNotification
+         object:nil];
+
+        [[NSNotificationCenter defaultCenter]
+         addObserver:self
+         selector:@selector(pairingStatusResponse:)
+         name:kPBPairingStatusResponseNotification
+         object:nil];
+
 #if TARGET_OS_IPHONE
         [[NSNotificationCenter defaultCenter]
          addObserver:self
@@ -176,7 +202,7 @@ NSString * const kPBClientIDKey = @"client-id";
         PBUserIdentity *userIdentity = nil;
 
         for (userIdentity in [PBUserIdentity MR_findAll]) {
-            userIdentity.connected = [NSNumber numberWithBool:NO];
+            userIdentity.connected = @(NO);
         }
 
         [userIdentity save];
@@ -211,8 +237,15 @@ NSString * const kPBClientIDKey = @"client-id";
                     userIdentity.email = email;
                 }
 
+#if TARGET_OS_IPHONE
+                userIdentity.identityType = @(PBUserIdentityTypeiOS);
+#else
+                userIdentity.identityType = @(PBUserIdentityTypeMac);
+#endif
+
                 [userIdentity save];
                 self.userIdentityObjectID = userIdentity.objectID;
+                self.userIdentifier = identifier;
             }
         }
 
@@ -328,8 +361,7 @@ NSString * const kPBClientIDKey = @"client-id";
     return nil;
 }
 
-- (GCDAsyncSocket *)socketForUserIdentity:(PBUserIdentity *)userIdentity {
-
+- (NSString *)clientIDForUserIdentity:(PBUserIdentity *)userIdentity {
     NSString *clientID = nil;
 
     for (NSString *deviceID in _connectedIdentitiesMap) {
@@ -340,6 +372,13 @@ NSString * const kPBClientIDKey = @"client-id";
             break;
         }
     }
+
+    return clientID;
+}
+
+- (GCDAsyncSocket *)socketForUserIdentity:(PBUserIdentity *)userIdentity {
+
+    NSString *clientID = [self clientIDForUserIdentity:userIdentity];
 
     if (clientID != nil) {
         return [_clientSocketMap objectForKey:clientID];
@@ -413,6 +452,9 @@ NSString * const kPBClientIDKey = @"client-id";
 
     PBRemoteNotificationMessage *message = notification.object;
 
+    self.pairedIdentities =
+    [message.userInfo objectForKey:kPBPairedIdentitiesKey];
+
     PBUserIdentity *sender =
     [PBUserIdentity userIdentityWithIdentifier:message.sender];
 
@@ -420,6 +462,8 @@ NSString * const kPBClientIDKey = @"client-id";
      postNotificationName:kPBRemoteMessageManagerPairingRequestedNotification
      object:sender
      userInfo:nil];
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
 }
 
 - (void)unpairingRequest:(NSNotification *)notification {
@@ -429,8 +473,10 @@ NSString * const kPBClientIDKey = @"client-id";
 
     PBUserIdentity *sender =
     [PBUserIdentity userIdentityWithIdentifier:message.sender];
-    sender.paired = [NSNumber numberWithBool:NO];
+    sender.paired = @(NO);
     [sender save];
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
 }
 
 - (void)pairingAccepted:(NSNotification *)notification {
@@ -443,7 +489,7 @@ NSString * const kPBClientIDKey = @"client-id";
         PBUserIdentity *userIdentity =
         [PBUserIdentity userIdentityWithIdentifier:message.sender];
 
-        userIdentity.paired = [NSNumber numberWithBool:YES];
+        userIdentity.paired = @(YES);
         [userIdentity save];
 
         if (_pairingCompletionBlock != nil) {
@@ -451,6 +497,10 @@ NSString * const kPBClientIDKey = @"client-id";
             _pairingCompletionBlock = nil;
         }
     }
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
+
+    [self sendPairingUpdateNotification];
 }
 
 - (void)pairingDenied:(NSNotification *)notification {
@@ -463,7 +513,7 @@ NSString * const kPBClientIDKey = @"client-id";
         PBUserIdentity *userIdentity =
         [PBUserIdentity userIdentityWithIdentifier:message.sender];
 
-        userIdentity.paired = [NSNumber numberWithBool:NO];
+        userIdentity.paired = @(NO);
         [userIdentity save];
 
         if (_pairingCompletionBlock != nil) {
@@ -471,6 +521,81 @@ NSString * const kPBClientIDKey = @"client-id";
             _pairingCompletionBlock = nil;
         }
     }
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
+}
+
+- (void)pairingUpdate:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    NSArray *pairedIdentities =
+    [notification.userInfo objectForKey:kPBPairedIdentitiesKey];
+
+    PBUserIdentity *pairedIdentity = nil;
+    
+    for (NSString *identity in pairedIdentities) {
+
+        if ([identity isEqualToString:self.deviceIdentifier] == NO) {
+
+            pairedIdentity = [PBUserIdentity userIdentityWithIdentifier:identity];
+
+            if (pairedIdentity == nil) {
+
+                pairedIdentity =
+                [PBUserIdentity
+                 createUserIdentityWithIdentifier:identity
+                 username:@""
+                 fullName:@""
+                 email:@""];
+            }
+
+            pairedIdentity.paired = @(YES);
+        }
+    }
+
+    [pairedIdentity save];
+}
+
+- (void)pairingStatusRequest:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
+
+    PBRemoteNotificationMessage *message = notification.object;
+
+    PBUserIdentity *sender =
+    [PBUserIdentity userIdentityWithIdentifier:message.sender];
+
+    if (sender != nil) {
+
+        BOOL isPaired = sender.paired.boolValue;
+
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingStatusResponseNotification
+         userInfo:@{
+         kPBPairedStatusKey : @(isPaired),
+         }
+         toRecipients:@[sender]];
+    }
+}
+
+- (void)pairingStatusResponse:(NSNotification *)notification {
+    NSLog(@"%s", __PRETTY_FUNCTION__);
+
+    PBRemoteNotificationMessage *message = notification.object;
+
+    PBUserIdentity *sender =
+    [PBUserIdentity userIdentityWithIdentifier:message.sender];
+
+    if (sender != nil) {
+
+        NSNumber *isPaired = [message.userInfo objectForKey:kPBPairedStatusKey];
+
+        sender.paired = isPaired;
+        [sender save];
+    }
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
 }
 
 - (void)handleIdentificationRequest:(NSNotification *)notification {
@@ -487,6 +612,11 @@ NSString * const kPBClientIDKey = @"client-id";
         kPBUserIdentityUsernameKey : self.userIdentity.username,
         kPBUserIdentityFullNameKey : [NSString safeString:self.userIdentity.fullName],
         kPBUserIdentityEmailKey : [NSString safeString:self.userIdentity.email],
+#if TARGET_OS_IPHONE
+        kPBUserIdentityTypeKey : @(PBUserIdentityTypeiOS),
+#else
+        kPBUserIdentityTypeKey : @(PBUserIdentityTypeMac),
+#endif
         }];
     }
 
@@ -508,6 +638,7 @@ NSString * const kPBClientIDKey = @"client-id";
     NSString *username = [notification.userInfo objectForKey:kPBUserIdentityUsernameKey];
     NSString *fullName = [notification.userInfo objectForKey:kPBUserIdentityFullNameKey];
     NSString *email = [notification.userInfo objectForKey:kPBUserIdentityEmailKey];
+    NSNumber *identityType = [notification.userInfo objectForKey:kPBUserIdentityTypeKey];
 
     if ([[NSString deviceIdentifier] isEqualToString:serverID]) {
 
@@ -552,7 +683,8 @@ NSString * const kPBClientIDKey = @"client-id";
                             userIdentity.email = email;
                         }
 
-                        userIdentity.connected = [NSNumber numberWithBool:YES];
+                        userIdentity.identityType = identityType;
+                        userIdentity.connected = @(YES);
 
                         [userIdentity save];
 
@@ -572,6 +704,12 @@ NSString * const kPBClientIDKey = @"client-id";
                          kPBUserIdentityIdentifierKey : userIdentity.identifier,
                          kPBUserIdentityNewUserKey : @(newUser),
                          }];
+
+                        NSTimeInterval delayInSeconds = 1.0f;
+                        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+                        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+                            [self sendPairingStatusRequestNotification];
+                        });
                     }
 
                     break;
@@ -668,7 +806,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
 - (void)doUserDisconnected:(PBUserIdentity *)userIdentity {
 
-    userIdentity.connected = [NSNumber numberWithBool:NO];
+    userIdentity.connected = @(NO);
 
     [userIdentity save];
 
@@ -819,7 +957,7 @@ NSString * const kPBClientIDKey = @"client-id";
 
             // write sender
 
-            NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentity.identifier;
+            NSString *sender = [PBRemoteMessageManager sharedInstance].userIdentifier;
 
 //            NSLog(@"sender: %@", sender);
 
@@ -901,8 +1039,28 @@ NSString * const kPBClientIDKey = @"client-id";
     if (_pairingCompletionBlock == nil && [userIdentity.identifier isEqualToString:self.deviceIdentifier] == NO) {
         _pairingCompletionBlock = completionBlock;
 
+        NSDictionary *userInfo = nil;
+
+        if (_propagatePairings) {
+            NSArray *pairings = [PBUserIdentity userIdentitiesWithPairing:YES];
+            if (pairings.count > 0) {
+                NSMutableArray *pairedIdentities =
+                [NSMutableArray arrayWithCapacity:pairings.count];
+
+                for (PBUserIdentity *pairedIdentity in pairings) {
+                    [pairedIdentities addObject:pairedIdentity.identifier];
+                }
+
+                userInfo =
+                @{
+                  kPBPairedIdentitiesKey : pairedIdentities,
+                };
+            }
+        }
+
         [PBRemoteNotificationMessage
          sendNotification:kPBPairingRequestNotification
+         userInfo:userInfo
          toRecipients:@[userIdentity]];
 
         NSTimeInterval delayInSeconds = 20.0f;
@@ -921,24 +1079,101 @@ NSString * const kPBClientIDKey = @"client-id";
 
 - (void)unpair:(PBUserIdentity *)userIdentity {
 
-    userIdentity.paired = [NSNumber numberWithBool:NO];
+    userIdentity.paired = @(NO);
     [userIdentity save];
 
     [PBRemoteNotificationMessage
      sendNotification:kPBUnpairingRequestNotification
      toRecipients:@[userIdentity]];
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
 }
 
 - (void)acceptPairing:(PBUserIdentity *)userIdentity {
-    [PBRemoteNotificationMessage
-     sendNotification:kPBPairingAcceptedNotification
-     toRecipients:@[userIdentity]];
+
+    if ([userIdentity.identifier isEqualToString:self.deviceIdentifier] == NO) {
+        for (NSString *identity in self.pairedIdentities) {
+
+            if ([identity isEqualToString:self.deviceIdentifier] == NO) {
+
+                PBUserIdentity *pairedIdentity = [PBUserIdentity userIdentityWithIdentifier:identity];
+
+                if (pairedIdentity == nil) {
+
+                    pairedIdentity =
+                    [PBUserIdentity
+                     createUserIdentityWithIdentifier:identity
+                     username:@""
+                     fullName:@""
+                     email:@""];
+                }
+
+                pairedIdentity.paired = @(YES);
+            }
+        }
+
+        userIdentity.paired = @(YES);
+        [userIdentity save];
+
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingAcceptedNotification
+         toRecipients:@[userIdentity]];
+    }
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
+
+    self.pairedIdentities = nil;
 }
 
 - (void)denyPairing:(PBUserIdentity *)userIdentity {
-    [PBRemoteNotificationMessage
-     sendNotification:kPBPairingDeniedNotification
-     toRecipients:@[userIdentity]];
+
+    if ([userIdentity.identifier isEqualToString:self.deviceIdentifier] == NO) {
+
+        userIdentity.paired = @(NO);
+        [userIdentity save];
+        
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingDeniedNotification
+         toRecipients:@[userIdentity]];
+    }
+
+    NSLog(@"paired identities: %@", [PBUserIdentity userIdentitiesWithPairing:YES]);
+
+    self.pairedIdentities = nil;
+}
+
+- (void)sendPairingUpdateNotification {
+
+    NSArray *pairings =
+    [PBUserIdentity userIdentitiesWithPairing:YES];
+
+    if (pairings.count > 0) {
+        NSMutableArray *pairedIdentities =
+        [NSMutableArray arrayWithCapacity:pairings.count];
+
+        for (PBUserIdentity *pairedIdentity in pairings) {
+            [pairedIdentities addObject:pairedIdentity.identifier];
+        }
+
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingUpdateNotification
+         userInfo:@{
+         kPBPairedIdentitiesKey : pairedIdentities,
+         }
+         toRecipients:pairings];
+    }
+}
+
+- (void)sendPairingStatusRequestNotification {
+
+    NSArray *pairings =
+    [PBUserIdentity userIdentitiesWithPairing:YES];
+
+    if (pairings.count > 0) {
+        [PBRemoteNotificationMessage
+         sendNotification:kPBPairingStatusRequestNotification
+         toRecipients:pairings];
+    }
 }
 
 #pragma mark - NSNetBrowserDelegate Conformance
@@ -1056,7 +1291,7 @@ NSString * const kPBClientIDKey = @"client-id";
         PBUserIdentity *clientIdentity =
         [PBUserIdentity userIdentityWithIdentifier:clientInfo.netService.name];
 
-        clientIdentity.connected = [NSNumber numberWithBool:YES];
+        clientIdentity.connected = @(YES);
 
         [clientIdentity save];
 
@@ -1077,7 +1312,7 @@ NSString * const kPBClientIDKey = @"client-id";
     PBUserIdentity *clientIdentity =
     [PBUserIdentity userIdentityWithIdentifier:clientInfo.netService.name];
 
-    clientIdentity.connected = [NSNumber numberWithBool:NO];
+    clientIdentity.connected = @(NO);
     [clientIdentity save];
 
     if (clientInfo != nil) {

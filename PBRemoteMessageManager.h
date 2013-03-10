@@ -42,15 +42,18 @@ extern NSString * const kPBUserIdentityIdentifierKey;
 extern NSString * const kPBUserIdentityUsernameKey;
 extern NSString * const kPBUserIdentityFullNameKey;
 extern NSString * const kPBUserIdentityEmailKey;
+extern NSString * const kPBUserIdentityTypeKey;
 extern NSString * const kPBUserIdentityNewUserKey;
 
 @interface PBRemoteMessageManager : NSObject
 
 @property (nonatomic) NSInteger maxClients;
 @property (nonatomic, weak) id <PBRemoteMessageDelegate> delegate;
+@property (nonatomic) BOOL propagatePairings;
 @property (nonatomic, strong) NSString *deviceIdentifier;
 @property (nonatomic, readonly) Reachability *reachability;
 @property (nonatomic, readonly) PBUserIdentity *userIdentity;
+@property (nonatomic, readonly) NSString *userIdentifier;
 @property (nonatomic) NSTimeInterval maxReadTimeForRawMessages;
 @property (nonatomic) BOOL appendCRLF;
 

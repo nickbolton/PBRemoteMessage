@@ -5,10 +5,11 @@
         <attribute name="email" optional="YES" attributeType="String" syncable="YES"/>
         <attribute name="fullName" optional="YES" attributeType="String" syncable="YES"/>
         <attribute name="identifier" attributeType="String" indexed="YES" syncable="YES"/>
+        <attribute name="identityType" attributeType="Integer 32" defaultValueString="0" syncable="YES"/>
         <attribute name="paired" attributeType="Boolean" defaultValueString="NO" syncable="YES"/>
         <attribute name="username" attributeType="String" indexed="YES" syncable="YES"/>
     </entity>
     <elements>
-        <element name="PBUserIdentity" positionX="160" positionY="192" width="128" height="135"/>
+        <element name="PBUserIdentity" positionX="160" positionY="192" width="128" height="150"/>
     </elements>
 </model>

@@ -21,6 +21,7 @@
 @dynamic email;
 @dynamic paired;
 @dynamic connected;
+@dynamic identityType;
 
 + (NSArray *)userIdentitiesWithPairing:(BOOL)paired {
 
@@ -98,6 +99,7 @@
     userIdentity.username = username;
     userIdentity.fullName = fullName;
     userIdentity.email = email;
+    userIdentity.identityType = @(PBUserIdentityTypeUnknown);
 
     return userIdentity;
 }
@@ -107,19 +109,7 @@
     if (objectID != nil) {
         NSManagedObjectContext *context =
         [PBRemoteDataManager sharedInstance].managedObjectContext;
-
-        NSError *error = nil;
-
-        PBUserIdentity *userIdentity =
-        (id)[context
-             existingObjectWithID:objectID
-             error:&error];
-
-        if (error != nil) {
-            NSLog(@"Error: %@", error);
-        }
-        
-        return userIdentity;
+        return [context objectWithID:objectID];
     }
     return nil;
 }
@@ -144,12 +134,14 @@
     return
     [self
      allUsersSortedBy:sortKey
+     identityType:PBUserIdentityTypeUnknown
      filterSelf:filterSelf
      filterOffline:NO
      includePaired:YES];
 }
 
 + (NSArray *)allUsersSortedBy:(NSString *)sortKey
+                 identityType:(PBUserIdentityType)identityType
                    filterSelf:(BOOL)filterSelf
                 filterOffline:(BOOL)filterOffline
                 includePaired:(BOOL)includePaired {
@@ -191,7 +183,8 @@
              userIdentity =
              [PBUserIdentity userIdentityWithID:userIdentity.objectID];
 
-             if (userIdentity.connected.boolValue == NO && userIdentity.paired.boolValue == NO) {
+             if ((userIdentity.connected.boolValue == NO && userIdentity.paired.boolValue == NO) ||
+                 (identityType != PBUserIdentityTypeUnknown && identityType != userIdentity.identityType.integerValue)) {
                  [mutableResults removeObjectAtIndex:idx];
              }
          }];
@@ -237,6 +230,14 @@
         [context deleteObject:userIdentity];
     }
 
+}
+
+- (BOOL)isMacType {
+    return self.identityType.integerValue == PBUserIdentityTypeMac;
+}
+
+- (BOOL)isiOSType {
+    return self.identityType.integerValue == PBUserIdentityTypeiOS;
 }
 
 - (void)save {

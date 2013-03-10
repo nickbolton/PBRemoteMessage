@@ -505,7 +505,7 @@ typedef enum {
              componentsSeparatedByCharactersInSet:commaCharacterSet];
 
             NSString *currentUserIdentifier =
-            [PBRemoteMessageManager sharedInstance].userIdentity.identifier;
+            [PBRemoteMessageManager sharedInstance].userIdentifier;
 
             BOOL peerMessage = [recipients containsObject:currentUserIdentifier];
 
