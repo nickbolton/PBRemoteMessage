@@ -201,7 +201,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
         PBUserIdentity *userIdentity = nil;
 
-        for (userIdentity in [PBUserIdentity MR_findAll]) {
+        for (userIdentity in [PBUserIdentity allUsers]) {
             userIdentity.connected = @(NO);
         }
 
@@ -1342,7 +1342,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
         
         [self cleanupClient:clientInfo];
 
-        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+        if ([_delegate respondsToSelector:@selector(clientDisconnected:)]) {
 
             if (clientInfo.netService.name.length > 0) {
                 NSLog(@"device disconnected: %@", clientInfo.netService.name);
