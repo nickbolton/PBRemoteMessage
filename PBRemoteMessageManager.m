@@ -15,6 +15,7 @@
 #import "PBRemoteClientInfo.h"
 #import "NSString+PBFoundation.h"
 #import "PBUserIdentity.h"
+#import "PBRemoteDataManager.h"
 
 #define READ_TIMEOUT 15.0
 
@@ -78,6 +79,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 @property (nonatomic, strong) NSMutableDictionary *connectedIdentitiesMap;
 
 @property (nonatomic, strong) NSMutableDictionary *socketIdentificationMap;
+@property (nonatomic, strong) NSTimer *purgeUserTimer;
 
 @end
 
@@ -181,6 +183,31 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 }
 
 - (void)dealloc {
+}
+
+- (void)setupPurgeUserTimer {
+
+    [self tearDownPurgeUserTimer];
+
+    if (_purgeClientIdentitesInterval > 0.0f) {
+        self.purgeUserTimer =
+        [NSTimer
+         scheduledTimerWithTimeInterval:60.0f
+         target:self
+         selector:@selector(purgeUserIdentities:)
+         userInfo:nil
+         repeats:YES];
+    }
+}
+
+- (void)tearDownPurgeUserTimer {
+    [_purgeUserTimer invalidate];
+    self.purgeUserTimer = nil;
+}
+
+- (void)setPurgeClientIdentitesInterval:(NSTimeInterval)purgeClientIdentitesInterval {
+    _purgeClientIdentitesInterval = purgeClientIdentitesInterval;
+    [self setupPurgeUserTimer];
 }
 
 - (NSString *)socketKey:(GCDAsyncSocket *)socket {
@@ -723,11 +750,13 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 }
 
 - (void)applicationDidEnterBackground:(NSNotification *)notification {
+    [self tearDownPurgeUserTimer];
     [self stop];
 }
 
 - (void)applicationWillEnterForeground:(NSNotification *)notification {
     [self doStart];
+    [self setupPurgeUserTimer];
 }
 
 - (void)socket:(GCDAsyncSocket *)sock didAcceptNewSocket:(GCDAsyncSocket *)newSocket {
@@ -858,6 +887,36 @@ NSString * const kPBPairedStatusKey = @"is-paired";
                  elapsed:(NSTimeInterval)elapsed
                bytesDone:(NSUInteger)length {
 	return 0.0;
+}
+
+- (void)purgeUserIdentities:(NSNotification *)notification {
+
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    NSArray *allUsers = [PBUserIdentity allUsers];
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+
+    NSInteger removedCount = 0;
+
+    for (PBUserIdentity *userIdentity in allUsers) {
+
+        NSTimeInterval idleTime =
+        now - userIdentity.lastConnected.timeIntervalSinceReferenceDate;
+
+        if (userIdentity.lastConnected == nil ||
+            idleTime > _purgeClientIdentitesInterval) {
+
+            [context deleteObject:userIdentity];
+            removedCount++;
+        }
+    }
+
+    if (removedCount > 0) {
+        [context performBlock:^{
+            [context save:NULL];
+        }];
+    }
 }
 
 #pragma mark - Instance methods
@@ -1292,6 +1351,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
         [PBUserIdentity userIdentityWithIdentifier:clientInfo.netService.name];
 
         clientIdentity.connected = @(YES);
+        clientIdentity.lastConnected = [NSDate date];
 
         [clientIdentity save];
 

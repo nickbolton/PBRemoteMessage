@@ -17,5 +17,6 @@
 - (NSManagedObjectContext *)managedObjectContext;
 
 + (PBRemoteDataManager *)sharedInstance;
++ (void)save;
 
 @end

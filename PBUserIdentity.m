@@ -22,6 +22,7 @@
 @dynamic paired;
 @dynamic connected;
 @dynamic identityType;
+@dynamic lastConnected;
 
 + (NSArray *)userIdentitiesWithPairing:(BOOL)paired {
 

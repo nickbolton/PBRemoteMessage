@@ -56,6 +56,7 @@ extern NSString * const kPBUserIdentityNewUserKey;
 @property (nonatomic, readonly) NSString *userIdentifier;
 @property (nonatomic) NSTimeInterval maxReadTimeForRawMessages;
 @property (nonatomic) BOOL appendCRLF;
+@property (nonatomic) NSTimeInterval purgeClientIdentitesInterval;
 
 + (PBRemoteMessageManager *)sharedInstance;
 

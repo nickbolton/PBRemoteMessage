@@ -24,6 +24,7 @@ typedef enum {
 @property (nonatomic, strong) NSNumber * paired;
 @property (nonatomic, strong) NSNumber * connected;
 @property (nonatomic, strong) NSNumber * identityType;
+@property (nonatomic, strong) NSDate   * lastConnected;
 
 + (PBUserIdentity *)userIdentityWithID:(NSManagedObjectID *)objectID;
 + (PBUserIdentity *)userIdentityWithIdentifier:(NSString *)identifier;

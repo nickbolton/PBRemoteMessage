@@ -111,6 +111,26 @@
     return _managedObjectContext;
 }
 
++ (void)save {
+    NSManagedObjectContext *context =
+    [PBRemoteDataManager sharedInstance].managedObjectContext;
+
+    if (self.objectID.isTemporaryID) {
+
+        NSError *error = nil;
+
+        [context obtainPermanentIDsForObjects:@[self] error:&error];
+
+        if (error) {
+            NSLog(@"%@", error);
+        }
+    }
+
+    [context performBlock:^{
+        [context save:NULL];
+    }];
+}
+
 #pragma mark - Singleton Methods
 
 static dispatch_once_t predicate_;
