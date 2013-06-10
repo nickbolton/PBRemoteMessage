@@ -40,6 +40,7 @@ NSString * const kPBPairingRequestNotification = @"kPBPairingRequestNotification
 NSString * const kPBUnpairingRequestNotification = @"kPBUnpairingRequestNotification";
 NSString * const kPBPairingAcceptedNotification = @"kPBPairingAcceptedNotification";
 NSString * const kPBPairingDeniedNotification = @"kPBPairingDeniedNotification";
+NSString * const kPBUserIdentitiesPurgedNotification = @"kPBUserIdentitiesPurgedNotification";
 NSString * const kPBRemoteMessageManagerPairingRequestedNotification = @"kPBRemoteMessageManagerPairingRequestedNotification";
 NSString * const kPBUserIdentityIdentifierKey = @"userIdentity-identifier";
 NSString * const kPBUserIdentityUsernameKey = @"userIdentity-username";
@@ -190,6 +191,9 @@ NSString * const kPBPairedStatusKey = @"is-paired";
     [self tearDownPurgeUserTimer];
 
     if (_purgeClientIdentitesInterval > 0.0f) {
+
+        [self purgeUserIdentities:nil];
+        
         self.purgeUserTimer =
         [NSTimer
          scheduledTimerWithTimeInterval:60.0f
@@ -633,10 +637,15 @@ NSString * const kPBPairedStatusKey = @"is-paired";
     [userInfo setObject:[NSString deviceIdentifier] forKey:kPBClientIDKey];
 
     if (self.userIdentity != nil) {
+
+        PBUserIdentity *userIdentity = self.userIdentity;
+        NSString *identifier = userIdentity.identifier;
+        NSString *username = userIdentity.username;
+
         [userInfo addEntriesFromDictionary:
         @{
-        kPBUserIdentityIdentifierKey : self.userIdentity.identifier,
-        kPBUserIdentityUsernameKey : self.userIdentity.username,
+        kPBUserIdentityIdentifierKey : identifier,
+        kPBUserIdentityUsernameKey : username,
         kPBUserIdentityFullNameKey : [NSString safeString:self.userIdentity.fullName],
         kPBUserIdentityEmailKey : [NSString safeString:self.userIdentity.email],
 #if TARGET_OS_IPHONE
@@ -712,6 +721,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
                         userIdentity.identityType = identityType;
                         userIdentity.connected = @(YES);
+                        userIdentity.lastConnected = [NSDate date];
 
                         [userIdentity save];
 
@@ -891,31 +901,26 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
 - (void)purgeUserIdentities:(NSNotification *)notification {
 
-    NSManagedObjectContext *context =
-    [PBRemoteDataManager sharedInstance].managedObjectContext;
-
     NSArray *allUsers = [PBUserIdentity allUsers];
-    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
 
-    NSInteger removedCount = 0;
+    BOOL sendRemovedNotification = NO;
 
     for (PBUserIdentity *userIdentity in allUsers) {
 
-        NSTimeInterval idleTime =
-        now - userIdentity.lastConnected.timeIntervalSinceReferenceDate;
+        if ([userIdentity.objectID isEqual:self.userIdentity.objectID] == NO) {
 
-        if (userIdentity.lastConnected == nil ||
-            idleTime > _purgeClientIdentitesInterval) {
-
-            [context deleteObject:userIdentity];
-            removedCount++;
+            if (userIdentity.isOutdated) {
+                sendRemovedNotification = YES;
+                break;
+            }
         }
     }
 
-    if (removedCount > 0) {
-        [context performBlock:^{
-            [context save:NULL];
-        }];
+    if (sendRemovedNotification) {
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:kPBUserIdentitiesPurgedNotification
+         object:self
+         userInfo:nil];
     }
 }
 

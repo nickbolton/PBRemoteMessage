@@ -108,9 +108,20 @@
 + (PBUserIdentity *)userIdentityWithID:(NSManagedObjectID *)objectID {
 
     if (objectID != nil) {
+
+        NSError *error = nil;
+
         NSManagedObjectContext *context =
         [PBRemoteDataManager sharedInstance].managedObjectContext;
-        return [context objectWithID:objectID];
+
+        PBUserIdentity *userIdentity =
+        [context existingObjectWithID:objectID error:&error];
+
+        if (error != nil) {
+            NSLog(@"Error: %@", error);
+        } else {
+            return userIdentity;
+        }
     }
     return nil;
 }
@@ -129,6 +140,22 @@
     [request setEntity:entity];
 
     return [self executeRequest:request inContext:context];
+}
+
++ (NSArray *)allRecentUsers {
+
+    NSArray *allUsers = [self allUsers];
+
+    NSMutableArray *users = [allUsers mutableCopy];
+
+    for (PBUserIdentity *userIdentity in allUsers) {
+
+        if (userIdentity.isOutdated) {
+            [users removeObject:userIdentity];
+        }
+    }
+
+    return users;
 }
 
 + (NSArray *)allUsersSortedBy:(NSString *)sortKey filterSelf:(BOOL)filterSelf {
@@ -256,7 +283,7 @@
         }
     }
 
-    [context performBlock:^{
+    [context performBlockAndWait:^{
         [context save:NULL];
     }];
 }
@@ -267,6 +294,21 @@
 
 - (void)unpair {
     [[PBRemoteMessageManager sharedInstance] unpair:self];
+}
+
+- (BOOL)isOutdated {
+
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+
+    NSTimeInterval idleThres =
+    [PBRemoteMessageManager sharedInstance].purgeClientIdentitesInterval;
+
+    NSTimeInterval idleTime =
+    now - self.lastConnected.timeIntervalSinceReferenceDate;
+
+    return
+    self.connected.boolValue == NO &&
+    (self.lastConnected != nil && idleTime > idleThres);
 }
 
 + (NSString *)displayName:(PBUserIdentity *)userIdentity {

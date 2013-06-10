@@ -44,6 +44,7 @@ extern NSString * const kPBUserIdentityFullNameKey;
 extern NSString * const kPBUserIdentityEmailKey;
 extern NSString * const kPBUserIdentityTypeKey;
 extern NSString * const kPBUserIdentityNewUserKey;
+extern NSString * const kPBUserIdentitiesPurgedNotification;
 
 @interface PBRemoteMessageManager : NSObject
 

@@ -36,6 +36,7 @@ typedef enum {
 + (void)removeUserIdentityWithID:(NSManagedObjectID *)objectID;
 
 + (NSArray *)allUsers;
++ (NSArray *)allRecentUsers;
 + (NSArray *)allUsersSortedBy:(NSString *)sortKey filterSelf:(BOOL)filterSelf;
 + (NSArray *)allUsersSortedBy:(NSString *)sortKey
                  identityType:(PBUserIdentityType)identityType
@@ -47,6 +48,7 @@ typedef enum {
 - (void)pair:(void(^)(BOOL paired))completionBlock;
 - (void)unpair;
 - (void)save;
+- (BOOL)isOutdated;
 - (BOOL)isMacType;
 - (BOOL)isiOSType;
 
