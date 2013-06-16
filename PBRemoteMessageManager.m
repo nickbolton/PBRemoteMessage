@@ -361,30 +361,33 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
 - (NSArray *)connectedIdentities {
 
-    NSMutableArray *result = [NSMutableArray arrayWithCapacity:_connectedIdentitiesMap.count];
+    @synchronized (self) {
+        NSMutableArray *result = [NSMutableArray arrayWithCapacity:_connectedIdentitiesMap.count];
 
-    for (NSManagedObjectID *objectID in _connectedIdentitiesMap.allValues) {
+        for (NSManagedObjectID *objectID in _connectedIdentitiesMap.allValues) {
 
-        PBUserIdentity *userIdentity =
-        [PBUserIdentity userIdentityWithID:objectID];
+            PBUserIdentity *userIdentity =
+            [PBUserIdentity userIdentityWithID:objectID];
 
-        if (userIdentity != nil) {
-            [result addObject:userIdentity];
+            if (userIdentity != nil) {
+                [result addObject:userIdentity];
+            }
         }
+        return result;
     }
-
-    return result;
 }
 
 - (PBUserIdentity *)userIdentityForSocket:(GCDAsyncSocket *)socket {
 
-    for (NSString *deviceID in _connectedIdentitiesMap) {
+    @synchronized (self) {
+        for (NSString *deviceID in _connectedIdentitiesMap) {
 
-        GCDAsyncSocket *connectedSocket = [_clientSocketMap objectForKey:deviceID];
-        if (socket == connectedSocket) {
-            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
-            if (objectID != nil) {
-                return [PBUserIdentity userIdentityWithID:objectID];
+            GCDAsyncSocket *connectedSocket = [_clientSocketMap objectForKey:deviceID];
+            if (socket == connectedSocket) {
+                NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
+                if (objectID != nil) {
+                    return [PBUserIdentity userIdentityWithID:objectID];
+                }
             }
         }
     }
@@ -395,12 +398,14 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 - (NSString *)clientIDForUserIdentity:(PBUserIdentity *)userIdentity {
     NSString *clientID = nil;
 
-    for (NSString *deviceID in _connectedIdentitiesMap) {
+    @synchronized (self) {
+        for (NSString *deviceID in _connectedIdentitiesMap) {
 
-        NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
-        if ([objectID isEqual:userIdentity.objectID]) {
-            clientID = deviceID;
-            break;
+            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:deviceID];
+            if ([objectID isEqual:userIdentity.objectID]) {
+                clientID = deviceID;
+                break;
+            }
         }
     }
 
@@ -435,19 +440,18 @@ NSString * const kPBPairedStatusKey = @"is-paired";
             [self cleanupClient:clientInfo];
         }
 
-        [_clients removeAllObjects];
-        [_connectedIdentitiesMap removeAllObjects];
+        @synchronized (self) {
 
-        @synchronized (_connectedSockets) {
+            [_clients removeAllObjects];
+            [_connectedIdentitiesMap removeAllObjects];
+
             for (GCDAsyncSocket *socket in _connectedSockets) {
                 [socket disconnect];
             }
-        }
+            [_connectedSockets removeAllObjects];
 
-        [_connectedSockets removeAllObjects];
-        [_clientSocketMap removeAllObjects];
+            [_clientSocketMap removeAllObjects];
 
-        @synchronized (_socketIdentificationMap) {
             [_socketIdentificationMap removeAllObjects];
         }
 
@@ -680,76 +684,77 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
         if (clientSocketKey != nil) {
 
-            @synchronized (_socketIdentificationMap) {
+            @synchronized (self) {
                 [_socketIdentificationMap removeObjectForKey:clientSocketKey];
-            }
 
-            for (GCDAsyncSocket *socket in _connectedSockets) {
+                for (GCDAsyncSocket *socket in _connectedSockets) {
 
-                NSString *socketKey = [self socketKey:socket];
+                    NSString *socketKey = [self socketKey:socket];
 
-                if ([socketKey isEqualToString:clientSocketKey]) {
-                    [_clientSocketMap setObject:socket forKey:clientID];
+                    if ([socketKey isEqualToString:clientSocketKey]) {
 
-                    [[NSNotificationCenter defaultCenter]
-                     postNotificationName:kPBRemoteMessageManagerActiveNotification
-                     object:self
-                     userInfo:nil];
-
-                    if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
-                        NSLog(@"device connected: %@", clientID);
-                        [_delegate clientConnected:clientID];
-                    }
-
-                    if (identifier.length > 0) {
-                        PBUserIdentity *userIdentity =
-                        [PBUserIdentity userIdentityWithIdentifier:identifier];
-
-                        BOOL newUser = userIdentity == nil;
-
-                        if (newUser) {
-                            userIdentity =
-                            [PBUserIdentity
-                             createUserIdentityWithIdentifier:identifier
-                             username:username
-                             fullName:fullName
-                             email:email];
-                        } else {
-                            userIdentity.fullName = fullName;
-                            userIdentity.email = email;
-                        }
-
-                        userIdentity.identityType = identityType;
-                        userIdentity.connected = @(YES);
-                        userIdentity.lastConnected = [NSDate date];
-
-                        [userIdentity save];
-
-                        [_connectedIdentitiesMap setObject:userIdentity.objectID forKey:clientID];
-                        
-                        if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
-                            
-                            NSLog(@"user connected: %@", userIdentity.identifier);
-                            [_delegate userIdentityConnected:userIdentity];
-                        }
+                        [_clientSocketMap setObject:socket forKey:clientID];
 
                         [[NSNotificationCenter defaultCenter]
-                         postNotificationName:kPBRemoteMessageManagerUserConnectedNotification
+                         postNotificationName:kPBRemoteMessageManagerActiveNotification
                          object:self
-                         userInfo:
-                         @{
-                         kPBUserIdentityIdentifierKey : userIdentity.identifier,
-                         kPBUserIdentityNewUserKey : @(newUser),
-                         }];
+                         userInfo:nil];
 
-                        NSTimeInterval delayInSeconds = 1.0f;
-                        dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
-                        dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
-                            [self sendPairingStatusRequestNotification];
-                        });
+                        if ([_delegate respondsToSelector:@selector(clientConnected:)]) {
+                            NSLog(@"device connected: %@", clientID);
+                            [_delegate clientConnected:clientID];
+                        }
+
+                        if (identifier.length > 0) {
+                            PBUserIdentity *userIdentity =
+                            [PBUserIdentity userIdentityWithIdentifier:identifier];
+
+                            BOOL newUser = userIdentity == nil;
+
+                            if (newUser) {
+                                userIdentity =
+                                [PBUserIdentity
+                                 createUserIdentityWithIdentifier:identifier
+                                 username:username
+                                 fullName:fullName
+                                 email:email];
+                            } else {
+                                userIdentity.fullName = fullName;
+                                userIdentity.email = email;
+                            }
+
+                            userIdentity.identityType = identityType;
+                            userIdentity.connected = @(YES);
+                            userIdentity.lastConnected = [NSDate date];
+
+                            [userIdentity save];
+
+                            [_connectedIdentitiesMap setObject:userIdentity.objectID forKey:clientID];
+
+                            if ([_delegate respondsToSelector:@selector(userIdentityConnected:)]) {
+
+                                NSLog(@"user connected: %@", userIdentity.identifier);
+                                [_delegate userIdentityConnected:userIdentity];
+                            }
+
+                            [[NSNotificationCenter defaultCenter]
+                             postNotificationName:kPBRemoteMessageManagerUserConnectedNotification
+                             object:self
+                             userInfo:
+                             @{
+                             kPBUserIdentityIdentifierKey : userIdentity.identifier,
+                             kPBUserIdentityNewUserKey : @(newUser),
+                             }];
+                            
+                            NSTimeInterval delayInSeconds = 1.0f;
+                            dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
+                            dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+                                [self sendPairingStatusRequestNotification];
+                            });
+                        }
+                        
+                        break;
                     }
-
-                    break;
                 }
             }
 
@@ -774,7 +779,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
     BOOL socketAdded = NO;
 
-	@synchronized(_connectedSockets) {
+	@synchronized (self) {
         if (_maxClients < 0.0f || _connectedSockets.count < _maxClients) {
             [_connectedSockets addObject:newSocket];
             socketAdded = YES;
@@ -807,7 +812,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
      initWithNotificationName:kPBClientIdentityRequestNotification
      userInfo:userInfo];
 
-    [self sendMessage:identityRequest recipients:nil socket:socket];
+    [self sendMessage:identityRequest recipients:nil socket:socket sync:YES];
 
     NSString *socketKey = [self socketKey:socket];
 
@@ -815,11 +820,11 @@ NSString * const kPBPairedStatusKey = @"is-paired";
      setObject:@([NSDate timeIntervalSinceReferenceDate])
      forKey:socketKey];
 
-    int64_t delayInSeconds = 1.0f;
+    int64_t delayInSeconds = 5.0f;
     dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, delayInSeconds * NSEC_PER_SEC);
     dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
 
-        @synchronized (_socketIdentificationMap) {
+        @synchronized (self) {
 
             NSNumber *timestamp =
             [_socketIdentificationMap objectForKey:socketKey];
@@ -831,15 +836,25 @@ NSString * const kPBPairedStatusKey = @"is-paired";
     });
 }
 
-- (void)removeSocketMapping:(GCDAsyncSocket *)targetSocket {
+- (void)removeSocketMapping:(GCDAsyncSocket *)targetSocket sync:(BOOL)sync {
 
-    for (NSString *clientID in _clientSocketMap) {
+    void (^executionBlock)(void) = ^{
+        for (NSString *clientID in _clientSocketMap) {
 
-        GCDAsyncSocket *socket = [_clientSocketMap objectForKey:clientID];
-        if (socket == targetSocket) {
-            [_clientSocketMap removeObjectForKey:clientID];
-            break;
+            GCDAsyncSocket *socket = [_clientSocketMap objectForKey:clientID];
+            if (socket == targetSocket) {
+                [_clientSocketMap removeObjectForKey:clientID];
+                break;
+            }
         }
+    };
+
+    if (sync) {
+        @synchronized (self) {
+            executionBlock();
+        }
+    } else {
+        executionBlock();
     }
 }
 
@@ -877,14 +892,13 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
         [sock disconnect];
         
-		@synchronized(_connectedSockets) {
-            [self removeSocketMapping:sock];
+		@synchronized (self) {
+
+            [self removeSocketMapping:sock sync:NO];
 			[_connectedSockets removeObject:sock];
-		}
 
-        NSString *socketKey = [self socketKey:sock];
+            NSString *socketKey = [self socketKey:sock];
 
-        @synchronized (_socketIdentificationMap) {
             [_socketIdentificationMap removeObjectForKey:socketKey];
         }
 	}
@@ -938,7 +952,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
             GCDAsyncSocket *socket = [self socketForUserIdentity:userIdentity];
 
             if ([_connectedSockets containsObject:socket]) {
-                [self sendMessage:message recipients:recipients socket:socket];
+                [self sendMessage:message recipients:recipients socket:socket sync:YES];
             }
         }
     }
@@ -946,14 +960,17 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
 - (void)sendMessage:(PBRemoteMessage *)message {
 
-    for (GCDAsyncSocket *socket in _connectedSockets) {
-        [self sendMessage:message recipients:nil socket:socket];
+    @synchronized (self) {
+        for (GCDAsyncSocket *socket in _connectedSockets) {
+            [self sendMessage:message recipients:nil socket:socket sync:NO];
+        }
     }
 }
 
 - (void)sendMessage:(PBRemoteMessage *)message
          recipients:(NSArray *)recipientList
-             socket:(GCDAsyncSocket *)socket {
+             socket:(GCDAsyncSocket *)socket
+               sync:(BOOL)sync {
 
     NSData *packet = nil;
     BOOL raw = message.rawData != nil;
@@ -994,7 +1011,7 @@ NSString * const kPBPairedStatusKey = @"is-paired";
             packet = packetCopy;
         }
         
-        @synchronized (self) {
+        void (^executionBlock)(void) = ^{
 
             // write preamble
 
@@ -1063,7 +1080,16 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
             [socket writeData:lengthData withTimeout:-1.0f tag:0];
             [socket writeData:packet withTimeout:-1.0f tag:0];
+        };
+
+        if (sync) {
+            @synchronized (self) {
+                executionBlock();
+            }
+        } else {
+            executionBlock();
         }
+        
     } else {
         NSLog(@"Warn: no packet data");
     }
@@ -1266,7 +1292,10 @@ NSString * const kPBPairedStatusKey = @"is-paired";
             
             if (_maxClients < 0 || _maxClients < _clients.count) {
                 clientInfo = [[PBRemoteClientInfo alloc] init];
-                [_clients setObject:clientInfo forKey:netService.name];
+
+                @synchronized (self) {
+                    [_clients setObject:clientInfo forKey:netService.name];
+                }
             }
         }
 
@@ -1289,16 +1318,18 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
         [clientInfo.client stop];
 
-        [_clients removeObjectForKey:netService.name];
+        @synchronized (self) {
+            [_clients removeObjectForKey:netService.name];
 
-        NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:netService.name];
+            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:netService.name];
 
-        PBUserIdentity *userIdentity =
-        [PBUserIdentity userIdentityWithID:objectID];
+            PBUserIdentity *userIdentity =
+            [PBUserIdentity userIdentityWithID:objectID];
 
-        [self doUserDisconnected:userIdentity];
+            [self doUserDisconnected:userIdentity];
 
-        [_connectedIdentitiesMap removeObjectForKey:netService.name];
+            [_connectedIdentitiesMap removeObjectForKey:netService.name];
+        }
     }
 }
 
@@ -1323,9 +1354,11 @@ NSString * const kPBPairedStatusKey = @"is-paired";
             [self cleanupClient:clientInfo];
         } else {
 
-            if (_maxClients < 0 || _maxClients < _clients.count) {
-                clientInfo = [[PBRemoteClientInfo alloc] init];
-                [_clients setObject:clientInfo forKey:netService.name];
+            @synchronized (self) {
+                if (_maxClients < 0 || _maxClients < _clients.count) {
+                    clientInfo = [[PBRemoteClientInfo alloc] init];
+                    [_clients setObject:clientInfo forKey:netService.name];
+                }
             }
         }
 
@@ -1384,25 +1417,27 @@ NSString * const kPBPairedStatusKey = @"is-paired";
 
         __block NSString *keyToRemove = nil;
 
-        [_clients enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
-            PBRemoteClientInfo *ci = obj;
-            if (ci.client == client) {
-                keyToRemove = key;
-                *stop = YES;
+        @synchronized (self) {
+            [_clients enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+                PBRemoteClientInfo *ci = obj;
+                if (ci.client == client) {
+                    keyToRemove = key;
+                    *stop = YES;
+                }
+            }];
+
+            if (keyToRemove != nil) {
+                [_clients removeObjectForKey:keyToRemove];
+
+                NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:keyToRemove];
+
+                PBUserIdentity *userIdentity =
+                [PBUserIdentity userIdentityWithID:objectID];
+
+                [self doUserDisconnected:userIdentity];
+                
+                [_connectedIdentitiesMap removeObjectForKey:keyToRemove];
             }
-        }];
-
-        if (keyToRemove != nil) {
-            [_clients removeObjectForKey:keyToRemove];
-
-            NSManagedObjectID *objectID = [_connectedIdentitiesMap objectForKey:keyToRemove];
-
-            PBUserIdentity *userIdentity =
-            [PBUserIdentity userIdentityWithID:objectID];
-
-            [self doUserDisconnected:userIdentity];
-
-            [_connectedIdentitiesMap removeObjectForKey:keyToRemove];
         }
         
         [self cleanupClient:clientInfo];
